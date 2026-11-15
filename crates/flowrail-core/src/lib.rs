@@ -1,5 +1,9 @@
 pub mod contract;
+pub mod frecency;
+pub mod git;
 pub mod graph;
+pub mod grep;
 pub mod pruning;
+pub mod search;
 pub mod slicer;
 pub mod state;

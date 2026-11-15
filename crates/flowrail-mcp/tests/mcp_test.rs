@@ -35,11 +35,28 @@ fn test_mcp_tools_lifecycle() {
 
     let mut engine = CorridorMcpEngine::new(temp_dir.clone(), graph, false);
 
-    // 1. Discover entrypoints
+    // 1. Discover entrypoints with fuzzy search and badges
     let disc_res = engine
-        .dispatch_tool("corridor_discover_entrypoints", &json!({}))
+        .dispatch_tool(
+            "corridor_discover_entrypoints",
+            &json!({
+                "query": "checkout"
+            }),
+        )
         .unwrap();
     assert!(disc_res.contains("CheckoutController.processCheckout"));
+    assert!(disc_res.contains("git_badge"));
+
+    // 1.5 Find symbols with typo tolerance
+    let find_res = engine
+        .dispatch_tool(
+            "corridor_find_symbols",
+            &json!({
+                "query": "Chekout"
+            }),
+        )
+        .unwrap();
+    assert!(find_res.contains("CheckoutController"));
 
     // 2. Open corridor
     let open_res = engine
@@ -54,7 +71,20 @@ fn test_mcp_tools_lifecycle() {
     assert!(open_res.contains("cor_"));
     assert!(open_res.contains("active_gate_index\": 0"));
 
-    // 3. Inspect Gate 0
+    // 2.5 Grep inside active corridor
+    let grep_res = engine
+        .dispatch_tool(
+            "corridor_grep",
+            &json!({
+                "query": "processCheckout",
+                "scope": "corridor"
+            }),
+        )
+        .unwrap();
+    assert!(grep_res.contains("total_matches\": 1"));
+    assert!(grep_res.contains("formatted_text"));
+
+    // 3. Inspect Gate 0 (normal and compact)
     let inspect_res = engine
         .dispatch_tool(
             "corridor_inspect_gate",
@@ -64,6 +94,17 @@ fn test_mcp_tools_lifecycle() {
         )
         .unwrap();
     assert!(inspect_res.contains("CheckoutController"));
+
+    let inspect_compact = engine
+        .dispatch_tool(
+            "corridor_inspect_gate",
+            &json!({
+                "gate_index": 0,
+                "compact": true
+            }),
+        )
+        .unwrap();
+    assert!(inspect_compact.contains("compact_token_optimized"));
 
     // 4. Propose edit
     let proposed_code = r#"export class CheckoutController {
