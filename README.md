@@ -1,45 +1,69 @@
 # Flowrail
 
-**Experimental Preview · TypeScript · MIT**
+[![Experimental Preview](https://img.shields.io/badge/EXPERIMENTAL-PREVIEW-252525?style=for-the-badge&labelColor=111111)](docs/Flowrail-Full-Specs/10-viability-and-release.md)
+[![CI](https://img.shields.io/github/actions/workflow/status/imMamdouhaboammar/Flowrail/ci.yml?branch=main&style=for-the-badge&labelColor=111111)](https://github.com/imMamdouhaboammar/Flowrail/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/badge/LICENSE-MIT-252525?style=for-the-badge&labelColor=111111)](LICENSE)
 
-Flowrail is a local tool for exploring TypeScript code and planning changes to shared types. It is built in Rust, and the analysis runs without a model API.
+Flowrail is a local CLI for exploring TypeScript code and planning changes to shared types. Give it an entry symbol to see where a feature goes, or add a target type to see what depends on it. The CLI returns a JSON plan for you or a coding agent to inspect.
 
-## Why I’m building it
+This is an **experimental preview**. The quickstart uses a bundled fixture and the AST fallback. The TypeScript bridge can also read SCIP indexes. Symbol lookup and dependency ordering on that path are still being validated. [Current limits and release criteria](docs/Flowrail-Full-Specs/10-viability-and-release.md)
 
-Add municipal tax at checkout. The coding agent finds the controller, changes the tax result, and gets checkout working. Then the compiler points to an invoice generator, a subscription renewal worker, and a VAT report. All three used the same result. They were easy to miss while the agent was reading checkout.
+## Build from source
 
-That’s the problem I want Flowrail to help with. When I’m reading a feature, I start where the request comes in and follow the work to where it’s saved or returned. When I’m changing a shared type, I start at the type. I want to see who produces it, who stores it, and who reads it in another part of the repo.
-
-Flowrail calls those two views a **read corridor** and a **mutation plan**. The first gives the agent a focused view of the feature. The second is meant to show which changes depend on others and which consumers need a closer look. The agent still writes the patch. A reference tells us who might be affected. Compiler diagnostics and tests tell us what actually broke.
-
-## Try the preview
-
-Use Rust 1.99.1, the toolchain used in CI. From the repository root:
+Use Rust 1.99.1, the version tested in CI.
 
 ```sh
-cargo test --workspace --locked
-cargo run --locked -p flowrail-cli -- \
+git clone https://github.com/imMamdouhaboammar/Flowrail.git
+cd Flowrail
+rustup toolchain install 1.99.1 --profile minimal
+cargo +1.99.1 build --locked -p flowrail-cli
+```
+
+## Follow a checkout
+
+Start at the controller in the [small ecommerce fixture](fixtures/sample-ts-ecommerce/). The JSON plan lists the symbols Flowrail found and the code it filtered from the view.
+
+```sh
+cargo +1.99.1 run --locked -p flowrail-cli -- \
   --workspace fixtures/sample-ts-ecommerce slice \
   --entry 'src/modules/checkout/checkout.controller.ts#CheckoutController' \
   --intent READ_FLOW
 ```
 
-This command returns a JSON plan from the small fixture using the AST fallback. The TypeScript bridge also ingests SCIP indexes and uses OXC to parse declarations. The real SCIP-backed flow and dependency ordering are still being validated. Use generated plans as leads to check against the source and compiler. Run experiments with MCP edits on a disposable copy of the workspace.
+## Plan a tax change
 
-The larger [ecommerce benchmark](docs/Flowrail-Full-Specs/05-ecommerce-benchmark.md) gives us something concrete to check. Checkout compiles with its original type and with an added optional field. Splitting `taxAmountCents` into two required fields produces four TypeScript diagnostics across invoices, renewals, and reporting. You can reproduce those results and generate a real SCIP index with the [fixture commands](docs/Flowrail-Full-Specs/fixtures/ecommerce-trap/README.md).
+Say checkout needs to report national and municipal tax separately. To understand checkout, I’d start at the controller. To plan that change, I’d start at `TaxCalculationResult` and check who produces it and who reads it, including callers outside checkout.
 
-## Where to look next
+```sh
+cargo +1.99.1 run --locked -p flowrail-cli -- \
+  --workspace fixtures/sample-ts-ecommerce slice \
+  --entry 'src/modules/checkout/checkout.controller.ts#CheckoutController' \
+  --intent MUTATE_CONTRACT \
+  --target 'src/modules/tax/tax.types.ts#TaxCalculationResult'
+```
 
-| Path | What’s there |
-| --- | --- |
-| [Story.md](Story.md) | Why I started Flowrail and where I’d use it |
-| [Full specifications](docs/Flowrail-Full-Specs/README.md) | Product scope, architecture, tool contracts, and acceptance tests |
-| [Viability and release criteria](docs/Flowrail-Full-Specs/10-viability-and-release.md) | What we’ve observed, what still needs proof, and how we’ll judge the MVP |
-| [`flowrail-core`](crates/flowrail-core/) | Dependency graph, slicing, contract comparison, and session state |
-| [`flowrail-ts-bridge`](crates/flowrail-ts-bridge/) | TypeScript analysis with SCIP and OXC |
-| [`flowrail-cli`](crates/flowrail-cli/) and [`flowrail-mcp`](crates/flowrail-mcp/) | Command-line and stdio MCP interfaces |
-| [Fixtures](fixtures/) | Small source fixture used by the Rust integration tests |
+This command prints a plan without editing files. Its first gate is the target type. Use the reported dependencies as leads to check against source and compiler output.
 
-A useful issue includes a small TypeScript example, the command you ran, and a relationship Flowrail missed or got wrong. See [Contributing](CONTRIBUTING.md) for local checks and [Security](SECURITY.md) for private reports.
+## Check the impact with TypeScript
 
-[MIT License](LICENSE)
+The [full ecommerce benchmark](docs/Flowrail-Full-Specs/05-ecommerce-benchmark.md) adds a separate compiler check. Adding an optional field typechecks. Replacing `taxAmountCents` with two required fields produces four diagnostics across invoicing, renewals, and VAT reporting. The benchmark uses those known results to evaluate the plan.
+
+```sh
+cd docs/Flowrail-Full-Specs/fixtures/ecommerce-trap
+bun install --frozen-lockfile --ignore-scripts
+bun run test:mutations
+```
+
+The fixture uses Bun and Node.js. Its [README](docs/Flowrail-Full-Specs/fixtures/ecommerce-trap/README.md) shows how to run the checkout tests and generate the SCIP index.
+
+## Documentation
+
+- [Story](Story.md) for why I started Flowrail and where I’d use it
+- [Full specifications](docs/Flowrail-Full-Specs/README.md) for scope, architecture, and acceptance criteria
+- [CLI and MCP](docs/Flowrail-Full-Specs/04-cli-and-mcp.md) for the proposed tool contracts
+- [Fixtures](fixtures/) for the TypeScript sources used by the Rust integration tests
+- [Rust workspace](crates/) for the CLI, dependency analysis, TypeScript bridge, and MCP server
+
+## Contributing
+
+A useful issue includes a small TypeScript example, the command you ran, and a dependency Flowrail missed or got wrong. See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and [SECURITY.md](SECURITY.md) for private reports. Try experimental MCP edits in a disposable checkout.
