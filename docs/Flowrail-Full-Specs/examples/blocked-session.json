@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "example": true,
+  "session_id": "example-session",
+  "revision": 3,
+  "phase": "BLOCKED",
+  "gate_id": "g0",
+  "outcome": "ERROR",
+  "error": {
+    "code": "CONTAGION_BARRIER",
+    "message": "The proposed tax contract change introduces four checked property errors across three external consumers.",
+    "retryable": true,
+    "suggested_action": "Submit a compatible proposal or acknowledge the listed obligations for this proposal and impact revision.",
+    "proposal_id": "example-proposal",
+    "impact_revision": 2,
+    "evidence": [
+      {
+        "path": "src/modules/invoicing/invoice.generator.ts",
+        "line": 22
+      },
+      {
+        "path": "src/modules/subscriptions/renewal.worker.ts",
+        "line": 42
+      },
+      {
+        "path": "src/modules/subscriptions/renewal.worker.ts",
+        "line": 43
+      },
+      {
+        "path": "src/modules/reporting/vat-audit.job.ts",
+        "line": 18
+      }
+    ]
+  }
+}

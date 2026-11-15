@@ -1,0 +1,15 @@
+{
+  "name": "@flowrail-fixtures/ecommerce-trap",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "index:scip": "mkdir -p .flowrail && scip-typescript index --output .flowrail/index.scip",
+    "test": "tsc && node --test checkout.test.cjs",
+    "test:mutations": "node verify-mutations.cjs"
+  },
+  "devDependencies": {
+    "@sourcegraph/scip-typescript": "0.3.14",
+    "typescript": "5.6.3"
+  }
+}

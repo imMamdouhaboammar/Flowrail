@@ -1,0 +1,264 @@
+{
+  "schema_version": "1.0",
+  "example": true,
+  "snapshot": "example-only",
+  "entry": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+  "coverage": {
+    "project": "tsconfig.json",
+    "indexed_files": 15,
+    "skipped": [],
+    "unresolved_relations": 0,
+    "truncated": false
+  },
+  "intent": "MUTATE_CONTRACT",
+  "target": "src/modules/tax/tax.types.ts#TaxCalculationResult",
+  "relations": [
+    {
+      "from": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+      "to": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "kind": "CALL",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/checkout/checkout.controller.ts",
+            "line": 24
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "to": "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+      "kind": "CALL",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/checkout/checkout.orchestrator.ts",
+            "line": 32
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+      "to": "src/modules/tax/tax.repository.ts#TaxRepository.findActiveRuleByJurisdiction",
+      "kind": "CALL",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/tax/tax.service.ts",
+            "line": 31
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "to": "src/modules/orders/order.repository.ts#OrderRepository.saveOrder",
+      "kind": "CALL",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/checkout/checkout.orchestrator.ts",
+            "line": 55
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+      "to": "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "kind": "PRODUCES_CONTRACT",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/tax/tax.service.ts",
+            "line": 14
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/orders/order.types.ts#PersistedOrderRecord",
+      "to": "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "kind": "TYPE_REFERENCE",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/orders/order.types.ts",
+            "line": 17
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "to": "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "kind": "TYPE_REFERENCE",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/checkout/checkout.orchestrator.ts",
+            "line": 32
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "to": "src/modules/orders/order.types.ts#PersistedOrderRecord",
+      "kind": "TYPE_REFERENCE",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/checkout/checkout.orchestrator.ts",
+            "line": 43
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "g0",
+      "symbol": "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "kind": "EDIT",
+      "at": {
+        "path": "src/modules/tax/tax.types.ts",
+        "line": 11
+      }
+    },
+    {
+      "id": "g1",
+      "symbol": "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+      "kind": "EDIT",
+      "at": {
+        "path": "src/modules/tax/tax.service.ts",
+        "line": 14
+      }
+    },
+    {
+      "id": "g2",
+      "symbol": "src/modules/orders/order.types.ts#PersistedOrderRecord",
+      "kind": "REVIEW",
+      "at": {
+        "path": "src/modules/orders/order.types.ts",
+        "line": 9
+      }
+    },
+    {
+      "id": "g3",
+      "symbol": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "kind": "EDIT",
+      "at": {
+        "path": "src/modules/checkout/checkout.orchestrator.ts",
+        "line": 20
+      }
+    },
+    {
+      "id": "g4",
+      "symbol": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+      "kind": "REVIEW",
+      "at": {
+        "path": "src/modules/checkout/checkout.controller.ts",
+        "line": 13
+      }
+    }
+  ],
+  "prerequisites": [
+    [
+      "g0",
+      "g1"
+    ],
+    [
+      "g0",
+      "g2"
+    ],
+    [
+      "g1",
+      "g3"
+    ],
+    [
+      "g2",
+      "g3"
+    ],
+    [
+      "g3",
+      "g4"
+    ]
+  ],
+  "external_dependents": [
+    {
+      "symbol": "src/modules/invoicing/invoice.generator.ts#InvoiceGenerator.buildComplianceInvoice",
+      "status": "POTENTIAL",
+      "directness": "TRANSITIVE",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/invoicing/invoice.generator.ts",
+            "line": 17
+          },
+          "provenance": "SCIP_AST"
+        },
+        {
+          "at": {
+            "path": "src/modules/invoicing/invoice.generator.ts",
+            "line": 22
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "symbol": "src/modules/subscriptions/renewal.worker.ts#RenewalWorker.processRecurringCharge",
+      "status": "POTENTIAL",
+      "directness": "DIRECT",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/subscriptions/renewal.worker.ts",
+            "line": 42
+          },
+          "provenance": "SCIP_AST"
+        },
+        {
+          "at": {
+            "path": "src/modules/subscriptions/renewal.worker.ts",
+            "line": 43
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "symbol": "src/modules/reporting/vat-audit.job.ts#VatAuditJob.summarizeQuarterlyLiability",
+      "status": "POTENTIAL",
+      "directness": "DIRECT",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/reporting/vat-audit.job.ts",
+            "line": 18
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    }
+  ]
+}

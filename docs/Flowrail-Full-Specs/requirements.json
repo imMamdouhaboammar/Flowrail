@@ -1,0 +1,141 @@
+{
+  "edition": "1.0",
+  "scope": "Flowrail target behavior",
+  "requirements": [
+    {
+      "id": "FR-01",
+      "requirement": "Bind a semantic index to its source and configuration snapshot including dirty bytes.",
+      "starts_at": "M1",
+      "acceptance": [
+        "AC-01"
+      ],
+      "document": "02-semantic-architecture.md"
+    },
+    {
+      "id": "FR-02",
+      "requirement": "Resolve symbols and preserve typed and positioned evidence with honest coverage.",
+      "starts_at": "M1",
+      "acceptance": [
+        "AC-01"
+      ],
+      "document": "02-semantic-architecture.md"
+    },
+    {
+      "id": "FR-03",
+      "requirement": "Return a deterministic read corridor with boundaries and cycle groups.",
+      "starts_at": "M1",
+      "acceptance": [
+        "AC-02"
+      ],
+      "document": "02-semantic-architecture.md"
+    },
+    {
+      "id": "FR-04",
+      "requirement": "Suppress eligible context without deleting semantic evidence.",
+      "starts_at": "M1",
+      "acceptance": [
+        "AC-02"
+      ],
+      "document": "02-semantic-architecture.md"
+    },
+    {
+      "id": "FR-05",
+      "requirement": "Schedule mutation steps after their prerequisite edges.",
+      "starts_at": "M1",
+      "acceptance": [
+        "AC-03"
+      ],
+      "document": "02-semantic-architecture.md"
+    },
+    {
+      "id": "FR-06",
+      "requirement": "Report possible, confirmed, checked-clean and unknown external impact with evidence.",
+      "starts_at": "M1",
+      "acceptance": [
+        "AC-04"
+      ],
+      "document": "02-semantic-architecture.md"
+    },
+    {
+      "id": "FR-07",
+      "requirement": "Compare normalized supported surfaces and check compatibility with real diagnostics.",
+      "starts_at": "M2",
+      "acceptance": [
+        "AC-04"
+      ],
+      "document": "03-mutation-and-verification.md"
+    },
+    {
+      "id": "FR-08",
+      "requirement": "Enforce gate visibility within the Flowrail tool boundary.",
+      "starts_at": "M3",
+      "acceptance": [
+        "AC-05"
+      ],
+      "document": "03-mutation-and-verification.md"
+    },
+    {
+      "id": "FR-09",
+      "requirement": "Stage authorized edits with revision, patch scope and preimage checks.",
+      "starts_at": "M3",
+      "acceptance": [
+        "AC-05"
+      ],
+      "document": "03-mutation-and-verification.md"
+    },
+    {
+      "id": "FR-10",
+      "requirement": "Bind acknowledgement to enumerated obligations and re-plan with prerequisites.",
+      "starts_at": "M3",
+      "acceptance": [
+        "AC-06"
+      ],
+      "document": "03-mutation-and-verification.md"
+    },
+    {
+      "id": "FR-11",
+      "requirement": "Complete only after project verification on the resulting snapshot.",
+      "starts_at": "M3",
+      "acceptance": [
+        "AC-07"
+      ],
+      "document": "03-mutation-and-verification.md"
+    },
+    {
+      "id": "FR-12",
+      "requirement": "Restore managed preimages and preserve independent edits on conflicts.",
+      "starts_at": "M3",
+      "acceptance": [
+        "AC-08"
+      ],
+      "document": "03-mutation-and-verification.md"
+    },
+    {
+      "id": "FR-13",
+      "requirement": "Offer read-only CLI index and slice with stable JSON and error exits.",
+      "starts_at": "M1",
+      "acceptance": [
+        "AC-09"
+      ],
+      "document": "04-cli-and-mcp.md"
+    },
+    {
+      "id": "FR-14",
+      "requirement": "Offer six versioned local MCP operations and verify client round trips.",
+      "starts_at": "M3",
+      "acceptance": [
+        "AC-09"
+      ],
+      "document": "04-cli-and-mcp.md"
+    },
+    {
+      "id": "FR-15",
+      "requirement": "Evaluate efficacy against an ordinary coding agent workflow with reproducible measures.",
+      "starts_at": "M4",
+      "acceptance": [
+        "AC-10"
+      ],
+      "document": "06-evaluation-and-acceptance.md"
+    }
+  ]
+}

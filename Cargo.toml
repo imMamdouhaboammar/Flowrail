@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/flowrail-core",
+    "crates/flowrail-ts-bridge",
+    "crates/flowrail-mcp",
+    "crates/flowrail-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Mamdouh Aboammar"]
+description = "Deterministic Execution & Mutation State-Machine for AI Coding Agents"
+
+[workspace.dependencies]
+# Internal workspace crates
+flowrail-core = { path = "crates/flowrail-core" }
+flowrail-ts-bridge = { path = "crates/flowrail-ts-bridge" }
+flowrail-mcp = { path = "crates/flowrail-mcp" }
+
+# Async & Runtime
+tokio = { version = "1.40", features = ["full"] }
+anyhow = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialization & MCP
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Graph & Algorithms
+petgraph = { version = "0.6", features = ["serde-1"] }
+indexmap = { version = "2.6", features = ["serde"] }
+
+# Fast AST Slicing & Signature Hashing for TypeScript
+oxc_allocator = "0.38"
+oxc_parser = "0.38"
+oxc_ast = "0.38"
+oxc_span = "0.38"
+oxc_semantic = "0.38"
+
+# SCIP Protobuf Ingestion (Cross-file Type Resolution)
+scip = "0.4"
+protobuf = "=3.2.0"
+
+# State Persistence & Git Checkpoints
+rusqlite = { version = "0.32", features = ["bundled"] }
+git2 = "0.19"
+blake3 = "1.5"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }

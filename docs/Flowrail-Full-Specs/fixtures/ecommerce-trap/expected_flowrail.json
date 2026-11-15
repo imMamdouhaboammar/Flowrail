@@ -1,0 +1,201 @@
+{
+  "benchmark_assertion_id": "ariadne_golden_test_01_compound_tax_mutation",
+  "input_command": {
+    "binary": "flowrail",
+    "subcommand": "slice",
+    "entry_symbol": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+    "intent": "MUTATE_CONTRACT",
+    "target_mutation_symbol": "src/modules/tax/tax.types.ts#TaxCalculationResult"
+  },
+  "expected_metrics_assertions": {
+    "must_prune_utility_files": [
+      "src/core/logger/pino.logger.ts",
+      "src/core/telemetry/tracer.ts",
+      "src/shared/utils/date.helper.ts"
+    ],
+    "must_never_prune_contracts": [
+      "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "src/modules/tax/tax.types.ts#TaxCalculationInput",
+      "src/modules/orders/order.types.ts#PersistedOrderRecord",
+      "src/modules/checkout/checkout.dto.ts#CheckoutRequestDto",
+      "src/modules/checkout/checkout.dto.ts#CheckoutResponseDto"
+    ],
+    "expected_active_corridor_gate_count": 5,
+    "expected_gate_0_external_contagion_count": 3,
+    "must_keep_semantic_symbols": [
+      "src/shared/utils/currency.ts#roundBankersCents",
+      "src/shared/utils/currency.ts#assertNonNegativeCents"
+    ],
+    "may_hide_presentation_symbols": [
+      "src/shared/utils/currency.ts#formatCentsToIso"
+    ]
+  },
+  "expected_mutation_gates_sequence": [
+    {
+      "gate_index": 0,
+      "expected_status": "UNLOCKED",
+      "symbol_id": "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "file_path": "src/modules/tax/tax.types.ts",
+      "line_range": [
+        11,
+        17
+      ],
+      "role": "ContractDefinition",
+      "rationale": "Target contract definition must be edited FIRST before any service or orchestrator that produces or consumes it.",
+      "expected_blast_radius": {
+        "contagion_index": 3,
+        "risk_level": "HighContagion",
+        "external_dependents": [
+          {
+            "symbol_id": "src/modules/invoicing/invoice.generator.ts#InvoiceGenerator.buildComplianceInvoice",
+            "file_path": "src/modules/invoicing/invoice.generator.ts",
+            "property_accessed": "taxAmountCents",
+            "breaking_diagnostic_lines": [
+              22
+            ]
+          },
+          {
+            "symbol_id": "src/modules/subscriptions/renewal.worker.ts#RenewalWorker.processRecurringCharge",
+            "file_path": "src/modules/subscriptions/renewal.worker.ts",
+            "property_accessed": "taxAmountCents",
+            "breaking_diagnostic_lines": [
+              42,
+              43
+            ]
+          },
+          {
+            "symbol_id": "src/modules/reporting/vat-audit.job.ts#VatAuditJob.summarizeQuarterlyLiability",
+            "file_path": "src/modules/reporting/vat-audit.job.ts",
+            "property_accessed": "taxAmountCents",
+            "breaking_diagnostic_lines": [
+              18
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "gate_index": 1,
+      "expected_status": "LOCKED",
+      "symbol_id": "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+      "file_path": "src/modules/tax/tax.service.ts",
+      "line_range": [
+        14,
+        45
+      ],
+      "role": "BusinessLogic",
+      "rationale": "Direct producer of TaxCalculationResult (Distance = 1 from mutated contract).",
+      "expected_blast_radius": {
+        "contagion_index": 1,
+        "risk_level": "Moderate",
+        "external_dependents": [
+          {
+            "symbol_id": "src/modules/subscriptions/renewal.worker.ts#RenewalWorker.processRecurringCharge",
+            "file_path": "src/modules/subscriptions/renewal.worker.ts"
+          }
+        ]
+      }
+    },
+    {
+      "gate_index": 2,
+      "expected_status": "LOCKED",
+      "symbol_id": "src/modules/orders/order.types.ts#PersistedOrderRecord",
+      "file_path": "src/modules/orders/order.types.ts",
+      "line_range": [
+        9,
+        19
+      ],
+      "role": "ContractDefinition",
+      "rationale": "Embeds TaxCalculationResult via `taxBreakdown` field and stores `totalTaxCents` (Distance = 1 from mutated contract)."
+    },
+    {
+      "gate_index": 3,
+      "expected_status": "LOCKED",
+      "symbol_id": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "file_path": "src/modules/checkout/checkout.orchestrator.ts",
+      "line_range": [
+        20,
+        67
+      ],
+      "role": "BusinessLogic",
+      "rationale": "Directly references the target contract and also depends on both the producer and the persisted order contract. Distance alone cannot order these steps."
+    },
+    {
+      "gate_index": 4,
+      "expected_status": "LOCKED",
+      "symbol_id": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+      "file_path": "src/modules/checkout/checkout.controller.ts",
+      "line_range": [
+        13,
+        25
+      ],
+      "role": "EntryGate",
+      "rationale": "Corridor entrypoint and outermost caller (Distance = 3 from mutated contract)."
+    }
+  ],
+  "dynamic_contagion_expansion_assertion": {
+    "when_agent_edits_gate_0_with_breaking_change": "Rename `taxAmountCents` to `nationalVatCents: number; municipalTaxCents: number;`",
+    "and_acknowledges_blast_radius": true,
+    "expected_dynamically_appended_gates": [
+      {
+        "gate_index": 5,
+        "status": "LOCKED",
+        "symbol_id": "src/modules/invoicing/invoice.generator.ts#InvoiceGenerator.buildComplianceInvoice"
+      },
+      {
+        "gate_index": 6,
+        "status": "LOCKED",
+        "symbol_id": "src/modules/subscriptions/renewal.worker.ts#RenewalWorker.processRecurringCharge"
+      },
+      {
+        "gate_index": 7,
+        "status": "LOCKED",
+        "symbol_id": "src/modules/reporting/vat-audit.job.ts#VatAuditJob.summarizeQuarterlyLiability"
+      }
+    ]
+  },
+  "read_flow": {
+    "entry_symbol": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+    "required_call_edges": [
+      [
+        "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+        "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout"
+      ],
+      [
+        "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+        "src/modules/tax/tax.service.ts#TaxService.calculateVat"
+      ],
+      [
+        "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+        "src/modules/tax/tax.repository.ts#TaxRepository.findActiveRuleByJurisdiction"
+      ],
+      [
+        "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+        "src/modules/orders/order.repository.ts#OrderRepository.saveOrder"
+      ]
+    ],
+    "exit_symbol": "src/modules/orders/order.repository.ts#OrderRepository.saveOrder"
+  },
+  "mutation_order_constraints": [
+    [
+      "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "src/modules/tax/tax.service.ts#TaxService.calculateVat"
+    ],
+    [
+      "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "src/modules/orders/order.types.ts#PersistedOrderRecord"
+    ],
+    [
+      "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+      "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout"
+    ],
+    [
+      "src/modules/orders/order.types.ts#PersistedOrderRecord",
+      "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout"
+    ],
+    [
+      "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout"
+    ]
+  ]
+}

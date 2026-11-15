@@ -1,0 +1,423 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flowrail read-only plan",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "example": {
+          "type": "boolean"
+        },
+        "snapshot": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^blake3:[0-9a-f]{64}$"
+            },
+            {
+              "const": "example-only"
+            }
+          ]
+        },
+        "entry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relation"
+          },
+          "uniqueItems": true
+        },
+        "intent": {
+          "const": "READ_FLOW"
+        },
+        "boundaries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "minItems": 1
+        },
+        "hidden": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "symbol": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "symbol",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schema_version",
+        "example",
+        "snapshot",
+        "entry",
+        "coverage",
+        "relations",
+        "intent",
+        "boundaries",
+        "groups",
+        "hidden"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "example": {
+          "type": "boolean"
+        },
+        "snapshot": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^blake3:[0-9a-f]{64}$"
+            },
+            {
+              "const": "example-only"
+            }
+          ]
+        },
+        "entry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relation"
+          },
+          "uniqueItems": true
+        },
+        "intent": {
+          "const": "MUTATE_CONTRACT"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gate"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "prerequisites": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "uniqueItems": true
+          },
+          "uniqueItems": true
+        },
+        "external_dependents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/impact"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "schema_version",
+        "example",
+        "snapshot",
+        "entry",
+        "coverage",
+        "relations",
+        "intent",
+        "target",
+        "gates",
+        "prerequisites",
+        "external_dependents"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "anchor": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ],
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/anchor"
+        },
+        "provenance": {
+          "enum": [
+            "SCIP_AST",
+            "AST",
+            "CHECKER",
+            "COMPILER",
+            "TEST",
+            "CONFIGURATION",
+            "RUNTIME_TRACE"
+          ]
+        }
+      },
+      "required": [
+        "at",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "relation": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "CALL",
+            "TYPE_REFERENCE",
+            "PRODUCES_CONTRACT",
+            "IMPLEMENTS",
+            "PROPERTY_USE",
+            "IMPORT",
+            "RE_EXPORT",
+            "VALUE_REFERENCE",
+            "WRITE",
+            "EXTERNAL_BOUNDARY",
+            "UNRESOLVED"
+          ]
+        },
+        "resolution": {
+          "enum": [
+            "RESOLVED",
+            "CANDIDATE",
+            "UNRESOLVED"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "kind",
+        "resolution",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "gate": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "EDIT",
+            "REVIEW"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/anchor"
+        }
+      },
+      "required": [
+        "id",
+        "symbol",
+        "kind",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "impact": {
+      "type": "object",
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "POTENTIAL",
+            "CONFIRMED_BREAKING",
+            "CHECKED_CLEAN",
+            "UNKNOWN"
+          ]
+        },
+        "directness": {
+          "enum": [
+            "DIRECT",
+            "TRANSITIVE",
+            "UNKNOWN"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "symbol",
+        "status",
+        "directness",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$"
+        },
+        "indexed_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "path",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "unresolved_relations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "project",
+        "indexed_files",
+        "skipped",
+        "unresolved_relations",
+        "truncated"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "example": {
+            "const": false
+          }
+        },
+        "required": [
+          "example"
+        ]
+      },
+      "then": {
+        "properties": {
+          "snapshot": {
+            "type": "string",
+            "pattern": "^blake3:[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  ]
+}

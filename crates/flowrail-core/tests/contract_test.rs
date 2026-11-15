@@ -1,0 +1,57 @@
+use flowrail_core::contract::{ContractHasher, ContractKind, ExportedSymbolContract};
+
+#[test]
+fn test_contract_hasher_whitespace_invariance() {
+    let contract_a = vec![ExportedSymbolContract {
+        symbol_name: "TaxCalculationResult".to_string(),
+        kind: ContractKind::Interface,
+        normalized_signature: "interface TaxCalculationResult { vat: number; total: number; }"
+            .to_string(),
+        signature_hash: "".to_string(),
+    }];
+
+    let contract_b = vec![ExportedSymbolContract {
+        symbol_name: "TaxCalculationResult".to_string(),
+        kind: ContractKind::Interface,
+        normalized_signature:
+            "interface   TaxCalculationResult  {\n  vat: number;\n  total: number;\n}".to_string(),
+        signature_hash: "".to_string(),
+    }];
+
+    let hash_a = ContractHasher::hash_normalized_surface(&contract_a);
+    let hash_b = ContractHasher::hash_normalized_surface(&contract_b);
+
+    assert_eq!(
+        hash_a, hash_b,
+        "Signatures differing only in whitespace must produce identical hash"
+    );
+}
+
+#[test]
+fn test_contract_hasher_diff_detection() {
+    let before = vec![ExportedSymbolContract {
+        symbol_name: "TaxCalculationResult".to_string(),
+        kind: ContractKind::Interface,
+        normalized_signature: "interface TaxCalculationResult { vat: number; total: number; }"
+            .to_string(),
+        signature_hash: "hash_before".to_string(),
+    }];
+
+    let after = vec![ExportedSymbolContract {
+        symbol_name: "TaxCalculationResult".to_string(),
+        kind: ContractKind::Interface,
+        normalized_signature:
+            "interface TaxCalculationResult { vat: number; total: number; compound: boolean; }"
+                .to_string(),
+        signature_hash: "hash_after".to_string(),
+    }];
+
+    let diff = ContractHasher::diff_surfaces(&before, &after);
+    assert!(diff.is_mutated);
+    assert_eq!(
+        diff.modified_symbols,
+        vec!["TaxCalculationResult".to_string()]
+    );
+    assert!(diff.added_symbols.is_empty());
+    assert!(diff.removed_symbols.is_empty());
+}

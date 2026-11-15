@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "example": true,
+  "snapshot": "example-only",
+  "entry": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+  "coverage": {
+    "project": "tsconfig.json",
+    "indexed_files": 15,
+    "skipped": [],
+    "unresolved_relations": 0,
+    "truncated": false
+  },
+  "intent": "READ_FLOW",
+  "relations": [
+    {
+      "from": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+      "to": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "kind": "CALL",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/checkout/checkout.controller.ts",
+            "line": 24
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "to": "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+      "kind": "CALL",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/checkout/checkout.orchestrator.ts",
+            "line": 32
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+      "to": "src/modules/tax/tax.repository.ts#TaxRepository.findActiveRuleByJurisdiction",
+      "kind": "CALL",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/tax/tax.service.ts",
+            "line": 31
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    },
+    {
+      "from": "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout",
+      "to": "src/modules/orders/order.repository.ts#OrderRepository.saveOrder",
+      "kind": "CALL",
+      "resolution": "RESOLVED",
+      "evidence": [
+        {
+          "at": {
+            "path": "src/modules/checkout/checkout.orchestrator.ts",
+            "line": 55
+          },
+          "provenance": "SCIP_AST"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    "src/modules/orders/order.repository.ts#OrderRepository.saveOrder"
+  ],
+  "groups": [
+    [
+      "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout"
+    ],
+    [
+      "src/modules/checkout/checkout.orchestrator.ts#CheckoutOrchestrator.executeCheckout"
+    ],
+    [
+      "src/modules/tax/tax.service.ts#TaxService.calculateVat"
+    ],
+    [
+      "src/modules/tax/tax.repository.ts#TaxRepository.findActiveRuleByJurisdiction"
+    ],
+    [
+      "src/modules/orders/order.repository.ts#OrderRepository.saveOrder"
+    ]
+  ],
+  "hidden": [
+    {
+      "symbol": "src/core/logger/pino.logger.ts#Logger.info",
+      "reason": "TELEMETRY_VIEW_SUPPRESSION"
+    }
+  ]
+}
