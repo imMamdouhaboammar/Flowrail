@@ -228,7 +228,48 @@ impl ScipGraphBuilder {
         Ok(graph)
     }
 
-    fn collect_ts_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) -> Result<()> {
+    /// Incrementally updates a single file in the CodebaseGraph after a file modification.
+    /// Re-parses AST for only the affected file, updates/upserts nodes and their signature hashes.
+    pub fn update_file_in_graph(
+        graph: &mut CodebaseGraph,
+        workspace_root: &Path,
+        file_path: &Path,
+    ) -> Result<Vec<String>> {
+        let rel_path = file_path
+            .strip_prefix(workspace_root)
+            .unwrap_or(file_path)
+            .to_string_lossy()
+            .to_string();
+
+        let source_text = fs::read_to_string(file_path).unwrap_or_default();
+        let symbols = TsAstSlicer::analyze_file(file_path, &source_text).unwrap_or_default();
+
+        let mut updated_symbols = Vec::new();
+        for sym in symbols {
+            let symbol_id = format!("{}#{}", rel_path, sym.name);
+            let role =
+                Self::classify_role(&rel_path, &sym.name, sym.is_contract, sym.mutates_state);
+
+            let node = SemanticNode {
+                symbol_id: symbol_id.clone(),
+                display_name: sym.name.clone(),
+                file_path: rel_path.clone(),
+                byte_range: sym.byte_range,
+                line_range: sym.line_range,
+                role,
+                signature_hash: sym.signature_hash,
+                mutates_domain_state: sym.mutates_state,
+                is_exported: sym.is_exported,
+            };
+
+            graph.upsert_node(node);
+            updated_symbols.push(symbol_id);
+        }
+
+        Ok(updated_symbols)
+    }
+
+    pub fn collect_ts_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) -> Result<()> {
         if !dir.is_dir() {
             return Ok(());
         }
@@ -237,7 +278,12 @@ impl ScipGraphBuilder {
             let path = entry.path();
             if path.is_dir() {
                 let name = path.file_name().unwrap_or_default().to_string_lossy();
-                if name != "node_modules" && name != ".git" && name != "dist" && name != "target" {
+                if !name.starts_with('.')
+                    && name != "node_modules"
+                    && name != "dist"
+                    && name != "target"
+                    && name != "do-not-care"
+                {
                     Self::collect_ts_files(&path, files)?;
                 }
             } else if let Some(ext) = path.extension()

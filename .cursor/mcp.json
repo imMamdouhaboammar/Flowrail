@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "flowrail": {
+      "command": "flowrail",
+      "args": [
+        "--workspace",
+        ".",
+        "mcp"
+      ]
+    }
+  }
+}

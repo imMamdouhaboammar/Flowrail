@@ -2,11 +2,41 @@ use flowrail_core::graph::{CodebaseGraph, NodeRole, SemanticNode};
 use flowrail_mcp::tools::CorridorMcpEngine;
 use serde_json::json;
 use std::fs;
+use std::path::PathBuf;
+
+struct TempDirGuard(PathBuf);
+
+impl TempDirGuard {
+    fn new(prefix: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 #[test]
 fn test_mcp_tools_lifecycle() {
-    let temp_dir = std::env::temp_dir().join(format!("flowrail_mcp_test_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&temp_dir);
+    let guard = TempDirGuard::new("flowrail_mcp_test");
+    let temp_dir = guard.path().to_path_buf();
     fs::create_dir_all(temp_dir.join("src/checkout")).unwrap();
 
     let file_path = "src/checkout/checkout.controller.ts";
@@ -35,11 +65,28 @@ fn test_mcp_tools_lifecycle() {
 
     let mut engine = CorridorMcpEngine::new(temp_dir.clone(), graph, false);
 
-    // 1. Discover entrypoints
+    // 1. Discover entrypoints with fuzzy search and badges
     let disc_res = engine
-        .dispatch_tool("corridor_discover_entrypoints", &json!({}))
+        .dispatch_tool(
+            "corridor_discover_entrypoints",
+            &json!({
+                "query": "checkout"
+            }),
+        )
         .unwrap();
     assert!(disc_res.contains("CheckoutController.processCheckout"));
+    assert!(disc_res.contains("git_badge"));
+
+    // 1.5 Find symbols with typo tolerance
+    let find_res = engine
+        .dispatch_tool(
+            "corridor_find_symbols",
+            &json!({
+                "query": "Chekout"
+            }),
+        )
+        .unwrap();
+    assert!(find_res.contains("CheckoutController"));
 
     // 2. Open corridor
     let open_res = engine
@@ -54,7 +101,20 @@ fn test_mcp_tools_lifecycle() {
     assert!(open_res.contains("cor_"));
     assert!(open_res.contains("active_gate_index\": 0"));
 
-    // 3. Inspect Gate 0
+    // 2.5 Grep inside active corridor
+    let grep_res = engine
+        .dispatch_tool(
+            "corridor_grep",
+            &json!({
+                "query": "processCheckout",
+                "scope": "corridor"
+            }),
+        )
+        .unwrap();
+    assert!(grep_res.contains("total_matches\": 1"));
+    assert!(grep_res.contains("formatted_text"));
+
+    // 3. Inspect Gate 0 (normal and compact)
     let inspect_res = engine
         .dispatch_tool(
             "corridor_inspect_gate",
@@ -64,6 +124,17 @@ fn test_mcp_tools_lifecycle() {
         )
         .unwrap();
     assert!(inspect_res.contains("CheckoutController"));
+
+    let inspect_compact = engine
+        .dispatch_tool(
+            "corridor_inspect_gate",
+            &json!({
+                "gate_index": 0,
+                "compact": true
+            }),
+        )
+        .unwrap();
+    assert!(inspect_compact.contains("compact_token_optimized"));
 
     // 4. Propose edit
     let proposed_code = r#"export class CheckoutController {
@@ -102,6 +173,4 @@ fn test_mcp_tools_lifecycle() {
 
     let restored = fs::read_to_string(&abs_path).unwrap();
     assert_eq!(restored, original_code);
-
-    let _ = fs::remove_dir_all(&temp_dir);
 }

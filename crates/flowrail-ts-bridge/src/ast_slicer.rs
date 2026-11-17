@@ -147,6 +147,24 @@ impl TsAstSlicer {
                             });
                         }
                     }
+                    Declaration::VariableDeclaration(var_decl) => {
+                        for declarator in &var_decl.declarations {
+                            if let oxc_ast::ast::BindingPatternKind::BindingIdentifier(ident) =
+                                &declarator.id.kind
+                            {
+                                let name = ident.name.to_string();
+                                let raw_slice = &source_text
+                                    [declarator.span.start as usize..declarator.span.end as usize];
+                                let hash = blake3::hash(raw_slice.as_bytes()).to_hex().to_string();
+                                contracts.push(ExportedSymbolContract {
+                                    symbol_name: name,
+                                    kind: ContractKind::FunctionSignature,
+                                    normalized_signature: raw_slice.to_string(),
+                                    signature_hash: hash,
+                                });
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }

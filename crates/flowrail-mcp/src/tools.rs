@@ -1,11 +1,17 @@
 use anyhow::{Result, anyhow};
-use flowrail_core::graph::{CodebaseGraph, NodeRole};
+use flowrail_core::frecency::FrecencyStore;
+use flowrail_core::git::GitStatusResolver;
+use flowrail_core::graph::CodebaseGraph;
+use flowrail_core::grep::{CorridorGrep, GrepScope};
 use flowrail_core::pruning::PruningConfig;
+use flowrail_core::search::FuzzySearchEngine;
 use flowrail_core::slicer::{CorridorSlicer, GateStatus, SliceIntent};
 use flowrail_core::state::CorridorSession;
 use flowrail_ts_bridge::ast_slicer::TsAstSlicer;
+use flowrail_ts_bridge::scip_loader::ScipGraphBuilder;
 use flowrail_ts_bridge::verifier::TsGateVerifier;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -14,15 +20,21 @@ pub struct CorridorMcpEngine {
     pub graph: CodebaseGraph,
     pub session: Option<CorridorSession>,
     pub run_tsc_on_advance: bool,
+    pub git_resolver: GitStatusResolver,
+    pub frecency: FrecencyStore,
 }
 
 impl CorridorMcpEngine {
     pub fn new(workspace_root: PathBuf, graph: CodebaseGraph, run_tsc_on_advance: bool) -> Self {
+        let git_resolver = GitStatusResolver::new(workspace_root.clone());
+        let frecency = FrecencyStore::new();
         Self {
             workspace_root,
             graph,
             session: None,
             run_tsc_on_advance,
+            git_resolver,
+            frecency,
         }
     }
 
@@ -31,11 +43,15 @@ impl CorridorMcpEngine {
             "tools": [
                 {
                     "name": "corridor_discover_entrypoints",
-                    "description": "Lists Entry Gates (HTTP routes, controllers, CLI handlers) in the repository without dumping file contents.",
+                    "description": "Discovers Entry Gates (HTTP routes, controllers, CLI handlers) with Git status awareness, typo-tolerant fuzzy matching, and frecency ranking.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "filter": { "type": "string", "description": "Optional substring filter for symbol or file path" }
+                            "query": { "type": "string", "description": "Fuzzy query with optional constraint syntax (e.g. '*.ts !tests/ checkout')" },
+                            "filter": { "type": "string", "description": "Alias for query" },
+                            "git_only": { "type": "boolean", "description": "If true, only returns symbols in modified, staged, or untracked files" },
+                            "definitions_only": { "type": "boolean", "default": true, "description": "Filter to EntryGate and ContractDefinition symbols" },
+                            "max_results": { "type": "integer", "default": 20 }
                         }
                     }
                 },
@@ -45,7 +61,71 @@ impl CorridorMcpEngine {
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "filter": { "type": "string", "description": "Optional substring filter for symbol or file path" }
+                            "query": { "type": "string", "description": "Fuzzy query with optional constraint syntax (e.g. '*.ts !tests/ checkout')" },
+                            "filter": { "type": "string", "description": "Alias for query" },
+                            "git_only": { "type": "boolean", "description": "If true, only returns symbols in modified, staged, or untracked files" },
+                            "definitions_only": { "type": "boolean", "default": true, "description": "Filter to EntryGate and ContractDefinition symbols" },
+                            "max_results": { "type": "integer", "default": 20 }
+                        }
+                    }
+                },
+                {
+                    "name": "corridor_find_symbols",
+                    "description": "Instant typo-tolerant symbol search across all graph nodes with Git status annotations and frecency weighting.",
+                    "inputSchema": {
+                        "type": "object",
+                        "required": ["query"],
+                        "properties": {
+                            "query": { "type": "string", "description": "Symbol name, acronym (e.g. 'CC'), or path token" },
+                            "definitions_only": { "type": "boolean", "default": false },
+                            "git_only": { "type": "boolean", "default": false },
+                            "max_results": { "type": "integer", "default": 25 }
+                        }
+                    }
+                },
+                {
+                    "name": "flowrail_find_symbols",
+                    "description": "Alias for corridor_find_symbols",
+                    "inputSchema": {
+                        "type": "object",
+                        "required": ["query"],
+                        "properties": {
+                            "query": { "type": "string", "description": "Symbol name, acronym (e.g. 'CC'), or path token" },
+                            "definitions_only": { "type": "boolean", "default": false },
+                            "git_only": { "type": "boolean", "default": false },
+                            "max_results": { "type": "integer", "default": 25 }
+                        }
+                    }
+                },
+                {
+                    "name": "corridor_grep",
+                    "description": "High-performance in-memory content search. Scopes search to the active business corridor slice (default) or entire workspace with definition-first filtering.",
+                    "inputSchema": {
+                        "type": "object",
+                        "required": ["query"],
+                        "properties": {
+                            "query": { "type": "string", "description": "Search term or regex pattern" },
+                            "scope": { "type": "string", "enum": ["corridor", "workspace"], "default": "corridor", "description": "corridor restricts grep strictly to files in the active corridor session to prevent context pollution" },
+                            "definitions_only": { "type": "boolean", "default": false, "description": "Restricts matches to declaration lines (export function, interface, class, type)" },
+                            "case_sensitive": { "type": "boolean", "description": "Smart-case applies when omitted" },
+                            "context_lines": { "type": "integer", "default": 1 },
+                            "max_matches": { "type": "integer", "default": 30 }
+                        }
+                    }
+                },
+                {
+                    "name": "flowrail_grep",
+                    "description": "Alias for corridor_grep",
+                    "inputSchema": {
+                        "type": "object",
+                        "required": ["query"],
+                        "properties": {
+                            "query": { "type": "string", "description": "Search term or regex pattern" },
+                            "scope": { "type": "string", "enum": ["corridor", "workspace"], "default": "corridor" },
+                            "definitions_only": { "type": "boolean", "default": false },
+                            "case_sensitive": { "type": "boolean" },
+                            "context_lines": { "type": "integer", "default": 1 },
+                            "max_matches": { "type": "integer", "default": 30 }
                         }
                     }
                 },
@@ -82,7 +162,8 @@ impl CorridorMcpEngine {
                         "type": "object",
                         "required": ["gate_index"],
                         "properties": {
-                            "gate_index": { "type": "integer" }
+                            "gate_index": { "type": "integer" },
+                            "compact": { "type": "boolean", "default": false, "description": "When true, returns summary and contracts without dumping raw file lines" }
                         }
                     }
                 },
@@ -93,7 +174,8 @@ impl CorridorMcpEngine {
                         "type": "object",
                         "required": ["gate_index"],
                         "properties": {
-                            "gate_index": { "type": "integer" }
+                            "gate_index": { "type": "integer" },
+                            "compact": { "type": "boolean", "default": false }
                         }
                     }
                 },
@@ -170,6 +252,8 @@ impl CorridorMcpEngine {
             "corridor_discover_entrypoints" | "flowrail_discover_entrypoints" => {
                 self.tool_discover_entrypoints(args)
             }
+            "corridor_find_symbols" | "flowrail_find_symbols" => self.tool_find_symbols(args),
+            "corridor_grep" | "flowrail_grep" => self.tool_grep(args),
             "corridor_open" | "flowrail_open" => self.tool_open(args),
             "corridor_inspect_gate" | "flowrail_inspect_gate" => self.tool_inspect_gate(args),
             "corridor_propose_edit" | "flowrail_propose_edit" => self.tool_propose_edit(args),
@@ -180,36 +264,193 @@ impl CorridorMcpEngine {
     }
 
     fn tool_discover_entrypoints(&self, args: &Value) -> Result<String> {
-        let filter = args
-            .get("filter")
+        let query = args
+            .get("query")
+            .or_else(|| args.get("filter"))
             .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_lowercase();
+            .unwrap_or("");
 
-        let mut entrypoints = Vec::new();
-        for idx in self.graph.graph.node_indices() {
-            let node = &self.graph.graph[idx];
-            let is_candidate = node.role == NodeRole::EntryGate
-                || (filter.len() > 2 && node.symbol_id.to_lowercase().contains(&filter));
+        let git_only = args
+            .get("git_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let definitions_only = args
+            .get("definitions_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .map(|v| (v as usize).clamp(1, 100))
+            .unwrap_or(20);
 
-            let matches_filter = filter.is_empty()
-                || node.symbol_id.to_lowercase().contains(&filter)
-                || node.file_path.to_lowercase().contains(&filter);
+        let search_engine =
+            FuzzySearchEngine::new(&self.graph, Some(&self.git_resolver), Some(&self.frecency));
 
-            if is_candidate && matches_filter {
-                entrypoints.push(json!({
-                    "symbol_id": node.symbol_id,
-                    "display_name": node.display_name,
-                    "file_path": node.file_path,
-                    "line_range": node.line_range,
-                    "role": node.role
-                }));
-            }
-        }
+        let hits = search_engine.search(query, definitions_only, git_only, max_results);
+
+        let entrypoints: Vec<Value> = hits
+            .into_iter()
+            .map(|h| {
+                json!({
+                    "symbol_id": h.symbol_id,
+                    "display_name": h.display_name,
+                    "file_path": h.file_path,
+                    "line_range": h.line_range,
+                    "role": h.role,
+                    "git_status": h.git_status,
+                    "git_badge": h.git_status.badge(),
+                    "score": h.score,
+                    "frecency_score": h.frecency_score,
+                    "match_stage": h.stage
+                })
+            })
+            .collect();
 
         Ok(serde_json::to_string_pretty(&json!({
             "entrypoints_count": entrypoints.len(),
             "entrypoints": entrypoints
+        }))?)
+    }
+
+    fn tool_find_symbols(&self, args: &Value) -> Result<String> {
+        let query = args
+            .get("query")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Missing required parameter 'query'"))?;
+
+        let definitions_only = args
+            .get("definitions_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let git_only = args
+            .get("git_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .map(|v| (v as usize).clamp(1, 100))
+            .unwrap_or(25);
+
+        let search_engine =
+            FuzzySearchEngine::new(&self.graph, Some(&self.git_resolver), Some(&self.frecency));
+
+        let hits = search_engine.search(query, definitions_only, git_only, max_results);
+
+        let symbols: Vec<Value> = hits
+            .into_iter()
+            .map(|h| {
+                json!({
+                    "symbol_id": h.symbol_id,
+                    "display_name": h.display_name,
+                    "file_path": h.file_path,
+                    "line_range": h.line_range,
+                    "role": h.role,
+                    "git_status": h.git_status,
+                    "git_badge": h.git_status.badge(),
+                    "score": h.score,
+                    "frecency_score": h.frecency_score
+                })
+            })
+            .collect();
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "query": query,
+            "symbols_count": symbols.len(),
+            "symbols": symbols
+        }))?)
+    }
+
+    fn tool_grep(&self, args: &Value) -> Result<String> {
+        let query = args
+            .get("query")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Missing required parameter 'query'"))?;
+
+        let scope_str = args
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| {
+                if self.session.is_some() {
+                    "corridor"
+                } else {
+                    "workspace"
+                }
+            });
+
+        let scope = match scope_str {
+            "corridor" => GrepScope::Corridor,
+            "workspace" => GrepScope::Workspace,
+            _ => {
+                return Err(anyhow!(
+                    "Invalid scope '{}'. Use 'corridor' or 'workspace'",
+                    scope_str
+                ));
+            }
+        };
+
+        let definitions_only = args
+            .get("definitions_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let case_sensitive = args.get("case_sensitive").and_then(|v| v.as_bool());
+        let context_lines = args
+            .get("context_lines")
+            .and_then(|v| v.as_u64())
+            .map(|v| (v as usize).min(5))
+            .unwrap_or(1);
+        let max_matches = args
+            .get("max_matches")
+            .and_then(|v| v.as_u64())
+            .map(|v| (v as usize).clamp(1, 100))
+            .unwrap_or(30);
+
+        let target_files = match scope {
+            GrepScope::Corridor => {
+                let session = self
+                    .session
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("No active corridor session for corridor-scoped grep. Pass scope: 'workspace' or call corridor_open first."))?;
+
+                let mut set = HashSet::new();
+                for gate in session
+                    .plan
+                    .gates
+                    .iter()
+                    .filter(|g| !matches!(g.status, GateStatus::Locked))
+                {
+                    set.insert(self.workspace_root.join(&gate.node.file_path));
+                }
+                set.into_iter().collect::<Vec<_>>()
+            }
+            GrepScope::Workspace => {
+                let mut files = Vec::new();
+                ScipGraphBuilder::collect_ts_files(&self.workspace_root, &mut files)?;
+                files
+            }
+        };
+
+        let report = CorridorGrep::search(
+            &self.workspace_root,
+            &target_files,
+            query,
+            definitions_only,
+            case_sensitive,
+            context_lines,
+            max_matches,
+            Some(&self.git_resolver),
+        )?;
+
+        let formatted = CorridorGrep::format_report_compact(&report);
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "query": query,
+            "scope": scope_str,
+            "total_matches": report.total_matches,
+            "files_matched": report.files.len(),
+            "formatted_text": formatted,
+            "report": report
         }))?)
     }
 
@@ -245,6 +486,9 @@ impl CorridorMcpEngine {
             target_mutation,
             &config,
         )?;
+
+        // Record frecency access
+        self.frecency.record_access(entry_symbol);
 
         let session = CorridorSession::new(plan, self.workspace_root.clone());
         let gate_summaries: Vec<Value> = session
@@ -292,10 +536,32 @@ impl CorridorMcpEngine {
             .and_then(|v| v.as_u64())
             .ok_or_else(|| anyhow!("Missing gate_index"))? as usize;
 
+        let compact = args
+            .get("compact")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         let gate = session.inspect_gate(gate_index)?;
         let abs_path = self.workspace_root.join(&gate.node.file_path);
-        let full_text = fs::read_to_string(&abs_path).unwrap_or_default();
 
+        // Record frecency
+        self.frecency.record_access(&gate.node.symbol_id);
+
+        if compact {
+            return Ok(serde_json::to_string_pretty(&json!({
+                "gate_index": gate.gate_index,
+                "status": gate.status,
+                "symbol_id": gate.node.symbol_id,
+                "file_path": gate.node.file_path,
+                "line_range": gate.node.line_range,
+                "role": gate.node.role,
+                "upstream_contracts": gate.upstream_contracts,
+                "blast_radius": gate.blast_radius,
+                "mode": "compact_token_optimized"
+            }))?);
+        }
+
+        let full_text = fs::read_to_string(&abs_path).unwrap_or_default();
         let code_slice =
             TsAstSlicer::slice_lines(&full_text, gate.node.line_range.0, gate.node.line_range.1);
 
@@ -358,6 +624,10 @@ impl CorridorMcpEngine {
             fs::create_dir_all(parent)?;
         }
         fs::write(&abs_path, new_content)?;
+
+        // Record frecency and invalidate git cache
+        self.frecency.record_access(&rel_path);
+        self.git_resolver.invalidate();
 
         let post_hash = TsAstSlicer::compute_file_contract_hash(&abs_path, new_content)
             .unwrap_or_else(|_| "syntax_error_post_ast".to_string());
@@ -442,6 +712,8 @@ impl CorridorMcpEngine {
         let reverted = session.rollback_to_gate(to_gate)?;
         let state_file = self.workspace_root.join(".corridor/active_session.json");
         let _ = session.save_to_disk(&state_file);
+
+        self.git_resolver.invalidate();
 
         let reverted_paths: Vec<String> = reverted.into_iter().map(|(_, rel)| rel).collect();
         Ok(serde_json::to_string_pretty(&json!({

@@ -1,0 +1,155 @@
+{
+  "module_specification": {
+    "crate_name": "corridor-core",
+    "module_name": "slicer_and_pruner",
+    "version": "0.1.0",
+    "purpose": "Deterministic graph slicing (Read Corridor vs. Write Mutation DAG), utility/logger noise pruning, and cross-corridor blast radius calculation using petgraph and blake3 signature hashes."
+  },
+  "mathematical_heuristics": {
+    "utility_noise_score": {
+      "formula": "S_noise(v) = (InDegree(v) / Max(1, OutDegree_Domain(v))) * (1.0 - StateMutationWeight(v))",
+      "parameters": {
+        "in_degree_threshold": 15,
+        "out_degree_domain_max": 1,
+        "mutation_weight_zero": "Node performs no DB writes, no domain entity transformations, and returns void or primitive formatting strings."
+      },
+      "hard_pruned_patterns": [
+        "^src/.*/(logger|telemetry|metrics|tracer)\\.ts$",
+        "^src/(utils|common|helpers)/(string|date|format|math|retry)\\.ts$",
+        "node_modules/.*"
+      ],
+      "exception_rule": "Never prune a node if it owns a Contract Type/Interface directly referenced in the Entry Gate or Target Symbol signature."
+    },
+    "contagion_index": {
+      "formula": "C(v) = |Dependents_Global(v) \\ Nodes(ActiveCorridor)|",
+      "description": "Counts exact number of symbols/files outside the active corridor slice that import or implement a contract defined in node v."
+    }
+  },
+  "algorithms": {
+    "read_corridor_forward_slice": {
+      "direction": "Top-Down (Entry Gate -> Exit Gate)",
+      "steps": [
+        "1. Locate Entry Gate Node (e.g., HTTP Controller method) in the global Semantic Graph.",
+        "2. Run Breadth-First Search (BFS) along Outgoing Edges (Call, Instantiate, MutateState, TypeReference).",
+        "3. At each visited node, evaluate PruneFilter::should_prune(node, graph).",
+        "4. If pruned, drop node and do not traverse its outgoing edges.",
+        "5. Construct induced subgraph of surviving nodes.",
+        "6. Break cycles using Tarjan's Strongly Connected Components (SCC) condensation and compute topological order.",
+        "7. Attach immediate Contract Definitions (Interfaces/DTOs) to each execution step."
+      ]
+    },
+    "write_mutation_backward_slice": {
+      "direction": "Bottom-Up (Mutated Contract/Symbol -> Upstream Dependents within Corridor + External Blast Radius)",
+      "steps": [
+        "1. Identify Target Node(s) where the contract or logic change starts.",
+        "2. Compute Forward Slice from Entry Gate to establish the active Corridor Boundary.",
+        "3. From Target Node, traverse Incoming Edges (reverse dependencies: Who calls or implements this?).",
+        "4. Partition discovered dependents into TWO sets: Internal Corridor Nodes (in-scope for sequential editing) and External Nodes (out-of-scope Blast Radius).",
+        "5. Sort Internal Corridor Nodes in Reverse Topological Order (Contract/Schema first -> Service second -> Controller last).",
+        "6. Attach External Nodes to the BlastRadiusReport of the specific Gate where the shared contract is mutated."
+      ]
+    }
+  },
+  "schema_examples": {
+    "sample_input_slice_request": {
+      "entrypoint_symbol": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+      "intent": "MUTATE_CONTRACT",
+      "target_mutation_symbol": "src/modules/tax/tax.types.ts#TaxCalculationResult",
+      "pruning_config": {
+        "max_fan_in_utility_threshold": 15,
+        "max_corridor_depth": 12,
+        "include_type_only_edges": true,
+        "ignore_path_prefixes": [
+          "src/core/logger",
+          "src/core/telemetry",
+          "src/shared/utils"
+        ]
+      }
+    },
+    "sample_output_corridor_plan": {
+      "corridor_id": "cor_9f8a7b6c",
+      "intent": "MUTATE_CONTRACT",
+      "entry_gate_symbol": "src/modules/checkout/checkout.controller.ts#CheckoutController.processCheckout",
+      "pruned_nodes_count": 42,
+      "pruned_samples": [
+        "src/core/logger/pino.logger.ts#Logger.info (Fan-in: 184, Noise Score: 184.0)",
+        "src/shared/utils/currency.ts#formatCents (Fan-in: 38, Pure Utility)"
+      ],
+      "gates": [
+        {
+          "gate_index": 0,
+          "status": "UNLOCKED",
+          "node_id": "src/modules/tax/tax.types.ts#TaxCalculationResult",
+          "file_path": "src/modules/tax/tax.types.ts",
+          "byte_range": [120, 450],
+          "line_range": [8, 24],
+          "role": "ContractDefinition",
+          "signature_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "upstream_contracts": [],
+          "downstream_in_corridor": [
+            "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+            "src/modules/checkout/checkout.service.ts#CheckoutService.execute"
+          ],
+          "blast_radius": {
+            "contagion_index": 2,
+            "risk_level": "HIGH",
+            "external_dependents": [
+              {
+                "symbol": "src/modules/invoicing/invoice.generator.ts#InvoiceGenerator.buildPdf",
+                "file_path": "src/modules/invoicing/invoice.generator.ts",
+                "line_number": 54,
+                "dependency_kind": "ReadsProperty"
+              },
+              {
+                "symbol": "src/modules/subscriptions/renewal.worker.ts#RenewalWorker.charge",
+                "file_path": "src/modules/subscriptions/renewal.worker.ts",
+                "line_number": 112,
+                "dependency_kind": "TypeReference"
+              }
+            ]
+          }
+        },
+        {
+          "gate_index": 1,
+          "status": "LOCKED",
+          "node_id": "src/modules/tax/tax.service.ts#TaxService.calculateVat",
+          "file_path": "src/modules/tax/tax.service.ts",
+          "byte_range": [890, 2140],
+          "line_range": [35, 88],
+          "role": "BusinessLogic",
+          "signature_hash": "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+          "upstream_contracts": [
+            "src/modules/tax/tax.types.ts#TaxCalculationResult"
+          ],
+          "downstream_in_corridor": [
+            "src/modules/checkout/checkout.service.ts#CheckoutService.execute"
+          ],
+          "blast_radius": {
+            "contagion_index": 0,
+            "risk_level": "SAFE_INTERNAL",
+            "external_dependents": []
+          }
+        }
+      ]
+    }
+  },
+  "rust_implementation": {
+    "target_files": [
+      {
+        "path": "crates/corridor-core/src/graph.rs",
+        "description": "Core semantic graph structures, node/edge types, and petgraph indices mapping.",
+        "code": "use indexmap::IndexMap;\nuse petgraph::graph::{DiGraph, NodeIndex};\nuse petgraph::visit::EdgeRef;\nuse petgraph::Direction;\nuse serde::{Deserialize, Serialize};\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]\npub enum NodeRole {\n    EntryGate,\n    BusinessLogic,\n    ContractDefinition,\n    DataRepository,\n    ExternalBoundary,\n    UtilityNoise,\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]\npub enum EdgeKind {\n    Calls,\n    ReferencesType,\n    ImplementsInterface,\n    MutatesState,\n    ReadsProperty,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct SemanticNode {\n    pub symbol_id: String,\n    pub display_name: String,\n    pub file_path: String,\n    pub byte_range: (usize, usize),\n    pub line_range: (usize, usize),\n    pub role: NodeRole,\n    pub signature_hash: String,\n    pub mutates_domain_state: bool,\n    pub is_exported: bool,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct SemanticEdge {\n    pub kind: EdgeKind,\n    pub call_site_line: usize,\n    pub is_dynamic_trace: bool,\n}\n\npub struct CodebaseGraph {\n    pub graph: DiGraph<SemanticNode, SemanticEdge>,\n    pub symbol_to_index: IndexMap<String, NodeIndex>,\n}\n\nimpl Default for CodebaseGraph {\n    fn default() -> Self {\n        Self::new()\n    }\n}\n\nimpl CodebaseGraph {\n    pub fn new() -> Self {\n        Self {\n            graph: DiGraph::new(),\n            symbol_to_index: IndexMap::new(),\n        }\n    }\n\n    pub fn upsert_node(&mut self, node: SemanticNode) -> NodeIndex {\n        if let Some(&idx) = self.symbol_to_index.get(&node.symbol_id) {\n            self.graph[idx] = node;\n            idx\n        } else {\n            let symbol_id = node.symbol_id.clone();\n            let idx = self.graph.add_node(node);\n            self.symbol_to_index.insert(symbol_id, idx);\n            idx\n        }\n    }\n\n    pub fn add_edge(\n        &mut self,\n        from_symbol: &str,\n        to_symbol: &str,\n        edge: SemanticEdge,\n    ) -> Option<petgraph::graph::EdgeIndex> {\n        let from_idx = *self.symbol_to_index.get(from_symbol)?;\n        let to_idx = *self.symbol_to_index.get(to_symbol)?;\n        Some(self.graph.add_edge(from_idx, to_idx, edge))\n    }\n\n    pub fn in_degree(&self, idx: NodeIndex) -> usize {\n        self.graph.edges_directed(idx, Direction::Incoming).count()\n    }\n\n    pub fn out_degree_domain(&self, idx: NodeIndex) -> usize {\n        self.graph\n            .edges_directed(idx, Direction::Outgoing)\n            .filter(|edge| {\n                let target = &self.graph[edge.target()];\n                target.role != NodeRole::UtilityNoise\n            })\n            .count()\n    }\n}\n"
+      },
+      {
+        "path": "crates/corridor-core/src/pruning.rs",
+        "description": "Deterministic noise filtering engine that identifies and strips loggers, telemetry, and high-fan-in pure utilities.",
+        "code": "use crate::graph::{CodebaseGraph, NodeRole, SemanticNode};\nuse petgraph::graph::NodeIndex;\nuse serde::{Deserialize, Serialize};\nuse std::collections::HashSet;\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct PruningConfig {\n    pub max_fan_in_utility_threshold: usize,\n    pub max_corridor_depth: usize,\n    pub include_type_only_edges: bool,\n    pub ignore_path_prefixes: Vec<String>,\n    pub ignore_symbol_substrings: Vec<String>,\n}\n\nimpl Default for PruningConfig {\n    fn default() -> Self {\n        Self {\n            max_fan_in_utility_threshold: 15,\n            max_corridor_depth: 12,\n            include_type_only_edges: true,\n            ignore_path_prefixes: vec![\n                \"node_modules/\".to_string(),\n                \"src/core/logger\".to_string(),\n                \"src/core/telemetry\".to_string(),\n                \"src/shared/utils\".to_string(),\n                \"src/common/helpers\".to_string(),\n            ],\n            ignore_symbol_substrings: vec![\n                \"Logger.\".to_string(),\n                \"Metrics.\".to_string(),\n                \"Tracer.\".to_string(),\n                \"console.\".to_string(),\n            ],\n        }\n    }\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct PrunedNodeRecord {\n    pub symbol_id: String,\n    pub reason: String,\n    pub in_degree: usize,\n    pub noise_score: f64,\n}\n\npub struct PruneEvaluator<'a> {\n    config: &'a PruningConfig,\n    protected_symbols: HashSet<String>,\n}\n\nimpl<'a> PruneEvaluator<'a> {\n    pub fn new(config: &'a PruningConfig, protected_symbols: HashSet<String>) -> Self {\n        Self {\n            config,\n            protected_symbols,\n        }\n    }\n\n    pub fn compute_noise_score(&self, graph: &CodebaseGraph, idx: NodeIndex) -> f64 {\n        let node = &graph.graph[idx];\n        let in_deg = graph.in_degree(idx) as f64;\n        let out_domain = (graph.out_degree_domain(idx).max(1)) as f64;\n        let mutation_factor = if node.mutates_domain_state || node.role == NodeRole::DataRepository {\n            0.1\n        } else {\n            1.0\n        };\n        (in_deg / out_domain) * mutation_factor\n    }\n\n    pub fn evaluate_node(\n        &self,\n        graph: &CodebaseGraph,\n        idx: NodeIndex,\n    ) -> Option<PrunedNodeRecord> {\n        let node: &SemanticNode = &graph.graph[idx];\n\n        if self.protected_symbols.contains(&node.symbol_id) {\n            return None;\n        }\n\n        if node.role == NodeRole::EntryGate || node.role == NodeRole::ContractDefinition {\n            return None;\n        }\n\n        for prefix in &self.config.ignore_path_prefixes {\n            if node.file_path.starts_with(prefix) {\n                return Some(PrunedNodeRecord {\n                    symbol_id: node.symbol_id.clone(),\n                    reason: format!(\"Matched ignored path prefix: {}\", prefix),\n                    in_degree: graph.in_degree(idx),\n                    noise_score: 999.0,\n                });\n            }\n        }\n\n        for pattern in &self.config.ignore_symbol_substrings {\n            if node.symbol_id.contains(pattern) || node.display_name.contains(pattern) {\n                return Some(PrunedNodeRecord {\n                    symbol_id: node.symbol_id.clone(),\n                    reason: format!(\"Matched telemetry/logger pattern: {}\", pattern),\n                    in_degree: graph.in_degree(idx),\n                    noise_score: 999.0,\n                });\n            }\n        }\n\n        let in_deg = graph.in_degree(idx);\n        let out_domain = graph.out_degree_domain(idx);\n        let noise_score = self.compute_noise_score(graph, idx);\n\n        if node.role == NodeRole::UtilityNoise\n            || (in_deg >= self.config.max_fan_in_utility_threshold\n                && out_domain == 0\n                && !node.mutates_domain_state)\n        {\n            return Some(PrunedNodeRecord {\n                symbol_id: node.symbol_id.clone(),\n                reason: format!(\n                    \"High fan-in pure utility (in_degree={}, out_domain=0)\",\n                    in_deg\n                ),\n                in_degree: in_deg,\n                noise_score,\n            });\n        }\n\n        None\n    }\n}\n"
+      },
+      {
+        "path": "crates/corridor-core/src/slicer.rs",
+        "description": "Implements Forward Read Corridor Slicing, Backward Mutation DAG Slicing, Topological Sorting, and Contagion/Blast Radius calculation.",
+        "code": "use crate::graph::{CodebaseGraph, EdgeKind, NodeRole, SemanticNode};\nuse crate::pruning::{PruneEvaluator, PrunedNodeRecord, PruningConfig};\nuse anyhow::{anyhow, Result};\nuse petgraph::algo::kosaraju_scc;\nuse petgraph::graph::NodeIndex;\nuse petgraph::visit::EdgeRef;\nuse petgraph::Direction;\nuse serde::{Deserialize, Serialize};\nuse std::collections::{HashMap, HashSet, VecDeque};\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]\npub enum SliceIntent {\n    ReadFlow,\n    MutateContract,\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]\npub enum GateStatus {\n    Unlocked,\n    Locked,\n    Verified,\n    Blocked,\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]\npub enum BlastRiskLevel {\n    SafeInternal,\n    Moderate,\n    HighContagion,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct ExternalDependent {\n    pub symbol_id: String,\n    pub file_path: String,\n    pub call_site_line: usize,\n    pub edge_kind: EdgeKind,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct BlastRadiusReport {\n    pub contagion_index: usize,\n    pub risk_level: BlastRiskLevel,\n    pub external_dependents: Vec<ExternalDependent>,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct CorridorGate {\n    pub gate_index: usize,\n    pub status: GateStatus,\n    pub node: SemanticNode,\n    pub upstream_contracts: Vec<String>,\n    pub downstream_in_corridor: Vec<String>,\n    pub blast_radius: BlastRadiusReport,\n}\n\n#[derive(Debug, Clone, Serialize, Deserialize)]\npub struct CorridorPlan {\n    pub corridor_id: String,\n    pub intent: SliceIntent,\n    pub entry_gate_symbol: String,\n    pub target_mutation_symbol: Option<String>,\n    pub gates: Vec<CorridorGate>,\n    pub pruned_nodes: Vec<PrunedNodeRecord>,\n}\n\npub struct CorridorSlicer;\n\nimpl CorridorSlicer {\n    pub fn build_corridor(\n        graph: &CodebaseGraph,\n        entry_symbol: &str,\n        intent: SliceIntent,\n        target_mutation_symbol: Option<&str>,\n        config: &PruningConfig,\n    ) -> Result<CorridorPlan> {\n        let entry_idx = *graph\n            .symbol_to_index\n            .get(entry_symbol)\n            .ok_or_else(|| anyhow!(\"Entry symbol '{}' not found in semantic graph\", entry_symbol))?;\n\n        let mut protected = HashSet::new();\n        protected.insert(entry_symbol.to_string());\n        if let Some(target) = target_mutation_symbol {\n            protected.insert(target.to_string());\n        }\n\n        let evaluator = PruneEvaluator::new(config, protected);\n        let mut pruned_records = Vec::new();\n        let mut pruned_set = HashSet::new();\n\n        // Step 1: Forward BFS from Entry Gate to isolate the active business corridor\n        let mut active_corridor_nodes = HashSet::new();\n        let mut queue = VecDeque::new();\n        queue.push_back((entry_idx, 0usize));\n        active_corridor_nodes.insert(entry_idx);\n\n        while let Some((curr_idx, depth)) = queue.pop_front() {\n            if depth >= config.max_corridor_depth {\n                continue;\n            }\n\n            for edge in graph.graph.edges_directed(curr_idx, Direction::Outgoing) {\n                if !config.include_type_only_edges && edge.weight().kind == EdgeKind::ReferencesType {\n                    continue;\n                }\n\n                let next_idx = edge.target();\n                if active_corridor_nodes.contains(&next_idx) || pruned_set.contains(&next_idx) {\n                    continue;\n                }\n\n                if let Some(record) = evaluator.evaluate_node(graph, next_idx) {\n                    pruned_set.insert(next_idx);\n                    pruned_records.push(record);\n                    continue;\n                }\n\n                active_corridor_nodes.insert(next_idx);\n                queue.push_back((next_idx, depth + 1));\n            }\n        }\n\n        // Step 2: Determine ordered sequence of nodes based on intent (Read vs Write)\n        let ordered_indices = match intent {\n            SliceIntent::ReadFlow => {\n                Self::order_for_reading(graph, entry_idx, &active_corridor_nodes)\n            }\n            SliceIntent::MutateContract => {\n                let target_sym = target_mutation_symbol.ok_or_else(|| {\n                    anyhow!(\"target_mutation_symbol is required when intent is MutateContract\")\n                })?;\n                let target_idx = *graph.symbol_to_index.get(target_sym).ok_or_else(|| {\n                    anyhow!(\"Target mutation symbol '{}' not found in graph\", target_sym)\n                })?;\n                active_corridor_nodes.insert(target_idx);\n                Self::order_for_mutation(graph, target_idx, &active_corridor_nodes)\n            }\n        };\n\n        // Step 3: Build Gates and calculate Blast Radius for each node\n        let mut gates = Vec::with_capacity(ordered_indices.len());\n        for (i, &node_idx) in ordered_indices.iter().enumerate() {\n            let node = graph.graph[node_idx].clone();\n            let blast_radius = Self::compute_blast_radius(graph, node_idx, &active_corridor_nodes);\n\n            let upstream_contracts = graph\n                .graph\n                .edges_directed(node_idx, Direction::Outgoing)\n                .filter_map(|e| {\n                    let target = &graph.graph[e.target()];\n                    if target.role == NodeRole::ContractDefinition {\n                        Some(target.symbol_id.clone())\n                    } else {\n                        None\n                    }\n                })\n                .collect();\n\n            let downstream_in_corridor = graph\n                .graph\n                .edges_directed(node_idx, Direction::Incoming)\n                .filter_map(|e| {\n                    let source_idx = e.source();\n                    if active_corridor_nodes.contains(&source_idx) {\n                        Some(graph.graph[source_idx].symbol_id.clone())\n                    } else {\n                        None\n                    }\n                })\n                .collect();\n\n            gates.push(CorridorGate {\n                gate_index: i,\n                status: if i == 0 {\n                    GateStatus::Unlocked\n                } else {\n                    GateStatus::Locked\n                },\n                node,\n                upstream_contracts,\n                downstream_in_corridor,\n                blast_radius,\n            });\n        }\n\n        let hash_input = format!(\"{}:{:?}:{:?}\", entry_symbol, intent, target_mutation_symbol);\n        let corridor_hash = blake3::hash(hash_input.as_bytes()).to_hex();\n        let corridor_id = format!(\"cor_{}\", &corridor_hash[..8]);\n\n        Ok(CorridorPlan {\n            corridor_id,\n            intent,\n            entry_gate_symbol: entry_symbol.to_string(),\n            target_mutation_symbol: target_mutation_symbol.map(|s| s.to_string()),\n            gates,\n            pruned_nodes: pruned_records,\n        })\n    }\n\n    fn order_for_reading(\n        graph: &CodebaseGraph,\n        entry_idx: NodeIndex,\n        corridor_nodes: &HashSet<NodeIndex>,\n    ) -> Vec<NodeIndex> {\n        // Condense strongly connected components to handle recursive/cyclic calls deterministically\n        let sccs = kosaraju_scc(&graph.graph);\n        let mut ordered = Vec::new();\n        let mut visited = HashSet::new();\n\n        // Ensure entry_idx starts first\n        ordered.push(entry_idx);\n        visited.insert(entry_idx);\n\n        // Iterate SCCs in reverse (topological order from roots to leaves in petgraph::kosaraju_scc)\n        for scc in sccs.into_iter().rev() {\n            for idx in scc {\n                if corridor_nodes.contains(&idx) && !visited.contains(&idx) {\n                    visited.insert(idx);\n                    ordered.push(idx);\n                }\n            }\n        }\n        ordered\n    }\n\n    fn order_for_mutation(\n        graph: &CodebaseGraph,\n        target_idx: NodeIndex,\n        corridor_nodes: &HashSet<NodeIndex>,\n    ) -> Vec<NodeIndex> {\n        // Backward slice from the mutated contract/symbol up to its callers inside the corridor\n        let mut distance_map: HashMap<NodeIndex, usize> = HashMap::new();\n        let mut queue = VecDeque::new();\n\n        queue.push_back((target_idx, 0usize));\n        distance_map.insert(target_idx, 0);\n\n        while let Some((curr, dist)) = queue.pop_front() {\n            for edge in graph.graph.edges_directed(curr, Direction::Incoming) {\n                let caller = edge.source();\n                if corridor_nodes.contains(&caller) && !distance_map.contains_key(&caller) {\n                    distance_map.insert(caller, dist + 1);\n                    queue.push_back((caller, dist + 1));\n                }\n            }\n        }\n\n        let mut impacted: Vec<(NodeIndex, usize)> = distance_map.into_iter().collect();\n        impacted.sort_by_key(|&(_, dist)| dist);\n        impacted.into_iter().map(|(idx, _)| idx).collect()\n    }\n\n    fn compute_blast_radius(\n        graph: &CodebaseGraph,\n        node_idx: NodeIndex,\n        corridor_nodes: &HashSet<NodeIndex>,\n    ) -> BlastRadiusReport {\n        let mut external_dependents = Vec::new();\n\n        for edge in graph.graph.edges_directed(node_idx, Direction::Incoming) {\n            let caller_idx = edge.source();\n            if !corridor_nodes.contains(&caller_idx) {\n                let caller_node = &graph.graph[caller_idx];\n                external_dependents.push(ExternalDependent {\n                    symbol_id: caller_node.symbol_id.clone(),\n                    file_path: caller_node.file_path.clone(),\n                    call_site_line: edge.weight().call_site_line,\n                    edge_kind: edge.weight().kind,\n                });\n            }\n        }\n\n        let contagion_index = external_dependents.len();\n        let risk_level = match contagion_index {\n            0 => BlastRiskLevel::SafeInternal,\n            1..=3 => BlastRiskLevel::Moderate,\n            _ => BlastRiskLevel::HighContagion,\n        };\n\n        BlastRadiusReport {\n            contagion_index,\n            risk_level,\n            external_dependents,\n        }\n    }\n}\n"
+      }
+    ]
+  }
+}
