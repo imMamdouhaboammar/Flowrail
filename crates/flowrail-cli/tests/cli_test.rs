@@ -61,7 +61,7 @@ fn test_cli_search_and_grep() {
 
     assert!(search_out.status.success());
     let search_stdout = String::from_utf8_lossy(&search_out.stdout);
-    assert!(search_stdout.contains("CheckoutController") || search_stdout.contains("checkout"));
+    assert!(search_stdout.contains("CheckoutController"));
 
     // 2. Grep
     let grep_out = Command::new(env!("CARGO_BIN_EXE_flowrail"))
@@ -74,7 +74,7 @@ fn test_cli_search_and_grep() {
 
     assert!(grep_out.status.success());
     let grep_stdout = String::from_utf8_lossy(&grep_out.stdout);
-    assert!(grep_stdout.contains("Invoice") || grep_stdout.contains("matches"));
+    assert!(grep_stdout.contains("InvoiceGenerator") && grep_stdout.contains("matches in"));
 }
 
 #[test]
@@ -94,11 +94,39 @@ fn test_cli_demo() {
     assert!(stdout.contains("Flowrail Demo Completed Successfully"));
 }
 
+struct TempDirGuard(std::path::PathBuf);
+
+impl TempDirGuard {
+    fn new(prefix: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn test_cli_init() {
-    let temp_dir = std::env::temp_dir().join(format!("flowrail_init_test_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&temp_dir);
-    std::fs::create_dir_all(&temp_dir).unwrap();
+    let guard = TempDirGuard::new("flowrail_init_test");
+    let temp_dir = guard.path();
 
     let output = Command::new(env!("CARGO_BIN_EXE_flowrail"))
         .arg("--workspace")
@@ -113,7 +141,5 @@ fn test_cli_init() {
     assert!(output.status.success());
     assert!(temp_dir.join(".flowrail/mcp.json").exists());
     assert!(temp_dir.join(".cursor/mcp.json").exists());
-    assert!(temp_dir.join(".claude/mcp.json").exists());
-
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    assert!(temp_dir.join(".mcp.json").exists());
 }

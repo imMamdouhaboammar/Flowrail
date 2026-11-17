@@ -54,7 +54,7 @@ Flowrail ships with a certified, zero-slop Agent Skill verified by OmniSkill (`o
 - **Global Alias:** `~/.agents/skills/flowrail/SKILL.md`
 
 Agents automatically use Flowrail's 8 stateful MCP tools (`flowrail_discover_entrypoints`, `flowrail_find_symbols`, `flowrail_grep`, `flowrail_open`, `flowrail_inspect_gate`, `flowrail_propose_edit`, `flowrail_advance_gate`, `flowrail_abort_or_rollback`) to enforce:
-1. **Sequential Visibility Locks:** Future gates hidden until the active file passes compilation.
+1. **Sequential Visibility Locks:** Future gates hidden until the active file passes verification (syntax verification via Tier 1 OXC parser by default; full TypeScript type-checking when `--full-typecheck` is enabled).
 2. **Body-Agnostic BLAKE3 Contract Hashing:** Immunity to internal whitespace and body edits; triggers only on signature changes.
 3. **Contagion Barrier:** Mandatory acknowledgment of cross-module blast radius before advancement.
 

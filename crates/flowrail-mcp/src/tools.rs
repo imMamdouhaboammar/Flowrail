@@ -414,7 +414,12 @@ impl CorridorMcpEngine {
                     .ok_or_else(|| anyhow!("No active corridor session for corridor-scoped grep. Pass scope: 'workspace' or call corridor_open first."))?;
 
                 let mut set = HashSet::new();
-                for gate in &session.plan.gates {
+                for gate in session
+                    .plan
+                    .gates
+                    .iter()
+                    .filter(|g| !matches!(g.status, GateStatus::Locked))
+                {
                     set.insert(self.workspace_root.join(&gate.node.file_path));
                 }
                 set.into_iter().collect::<Vec<_>>()

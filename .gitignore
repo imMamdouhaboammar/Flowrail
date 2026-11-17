@@ -39,12 +39,7 @@ bun.lockb.bak
 
 # Environments & Sensitive Credentials
 .env
-.env.local
-.env.*.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.env
+.env.*
 !.env.example
 !.env.template
 *.pem
@@ -56,15 +51,21 @@ bun.lockb.bak
 secrets/
 credentials.json
 env-vault.json
+id_rsa*
+*.vault
 
 # Agent Tooling, Caches & Worktrees
 .worktrees/
 .anti-slop/
 **/.anti-slop/
 settings.local.json
-**/.claude/settings.local.json
-**/.cursor/settings.local.json
-**/.agy/settings.local.json
+.claude/
+.cursor/skills/
+.agy/
+**/.agy/
+.agent-kernel/
+.agents/skills/*
+!.agents/skills/flowrail/
 scratch/
 do-not-care/
 tmp/

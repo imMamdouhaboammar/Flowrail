@@ -265,19 +265,21 @@ impl CorridorSession {
         }
 
         let mut restored_files = Vec::new();
-        let indices_to_revert: Vec<usize> = self
+        let mut indices_to_revert: Vec<usize> = self
             .checkpoints
             .keys()
             .copied()
             .filter(|&k| k >= target_gate)
             .collect();
+        indices_to_revert.sort_unstable_by(|a, b| b.cmp(a));
 
         for k in indices_to_revert {
-            if let Some(chk) = self.checkpoints.remove(&k) {
+            if let Some(chk) = self.checkpoints.get(&k) {
                 let abs_path = self.workspace_root.join(&chk.file_path);
                 std::fs::write(&abs_path, &chk.original_content)?;
-                restored_files.push((abs_path, chk.file_path));
+                restored_files.push((abs_path, chk.file_path.clone()));
             }
+            self.checkpoints.remove(&k);
         }
 
         for (i, gate) in self.plan.gates.iter_mut().enumerate() {

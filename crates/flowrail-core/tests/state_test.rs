@@ -5,11 +5,41 @@ use flowrail_core::slicer::{
 };
 use flowrail_core::state::{CorridorSession, SessionPhase};
 use std::fs;
+use std::path::PathBuf;
+
+struct TempDirGuard(PathBuf);
+
+impl TempDirGuard {
+    fn new(prefix: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 #[test]
 fn test_state_machine_contagion_barrier_and_rollback() {
-    let temp_dir = std::env::temp_dir().join(format!("flowrail_state_test_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&temp_dir);
+    let guard = TempDirGuard::new("flowrail_state_test");
+    let temp_dir = guard.path().to_path_buf();
     fs::create_dir_all(temp_dir.join("src/tax")).unwrap();
     fs::create_dir_all(temp_dir.join("src/invoicing")).unwrap();
 
@@ -128,6 +158,4 @@ fn test_state_machine_contagion_barrier_and_rollback() {
     );
     assert_eq!(session.plan.gates[0].status, GateStatus::Unlocked);
     assert_eq!(session.phase, SessionPhase::ActiveGate(0));
-
-    let _ = fs::remove_dir_all(&temp_dir);
 }

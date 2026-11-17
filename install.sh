@@ -20,9 +20,18 @@ if ! command -v cargo >/dev/null 2>&1; then
     source "$HOME/.cargo/env"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+SCRIPT_DIR=""
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    SOURCE="${BASH_SOURCE[0]}"
+    while [ -h "$SOURCE" ]; do
+        DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+        SOURCE="$(readlink "$SOURCE")"
+        [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+    done
+    SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+fi
 
-if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/Cargo.toml" ]; then
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/Cargo.toml" ] && [ -d "$SCRIPT_DIR/crates/flowrail-cli" ]; then
     ROOT_DIR="$SCRIPT_DIR"
 else
     # Remote install fallback: clone to temporary or ~/.flowrail-src
@@ -33,18 +42,27 @@ else
     ROOT_DIR="${INSTALL_DIR}"
 fi
 
+ORIGINAL_PATH="$PATH"
+CARGO_BIN_DIR="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}/bin}"
+
 echo "📦 Building Flowrail CLI in release mode..."
 cargo install --path "${ROOT_DIR}/crates/flowrail-cli" --force
 
-# Ensure ~/.cargo/bin is in PATH for this session if not already
-export PATH="${HOME}/.cargo/bin:${PATH}"
-
+# Check if flowrail is already visible in caller's PATH
 if ! command -v flowrail >/dev/null 2>&1; then
-    echo "⚠️  ~/.cargo/bin is not in your current PATH."
-    echo "Adding symlink to /usr/local/bin or ~/.local/bin..."
-    mkdir -p "${HOME}/.local/bin"
-    ln -sf "${HOME}/.cargo/bin/flowrail" "${HOME}/.local/bin/flowrail"
-    export PATH="${HOME}/.local/bin:${PATH}"
+    export PATH="${CARGO_BIN_DIR}:${PATH}"
+
+    if ! command -v flowrail >/dev/null 2>&1; then
+        echo "Adding symlink to ~/.local/bin..."
+        mkdir -p "${HOME}/.local/bin"
+        ln -sf "${CARGO_BIN_DIR}/flowrail" "${HOME}/.local/bin/flowrail"
+        export PATH="${HOME}/.local/bin:${PATH}"
+    fi
+
+    echo ""
+    echo "⚠️  ${CARGO_BIN_DIR} is not in your original shell PATH."
+    echo "To run flowrail directly from any terminal, add this to ~/.bashrc or ~/.zshrc:"
+    echo "  export PATH=\"${CARGO_BIN_DIR}:\$PATH\""
 fi
 
 echo ""

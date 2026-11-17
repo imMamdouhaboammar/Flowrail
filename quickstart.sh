@@ -3,7 +3,13 @@ set -e
 
 # Flowrail 1-Command Quickstart Demo
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 
 echo "=== Flowrail 1-Command Quickstart ==="
 echo "Running system doctor..."
@@ -14,5 +20,6 @@ echo "Running interactive refactoring state-machine demo..."
 "${SCRIPT_DIR}/bin/flowrail" demo
 
 echo ""
-echo "To initialize MCP for your current editor (Cursor, Claude Code, Windsurf):"
-echo "  ${SCRIPT_DIR}/bin/flowrail init"
+echo "To install flowrail to PATH and initialize MCP for your editor:"
+echo "  1. Run ./install.sh (or 'cargo install --path crates/flowrail-cli')"
+echo "  2. Run 'flowrail init' in your TypeScript project"

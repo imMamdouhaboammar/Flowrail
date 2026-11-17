@@ -4,8 +4,15 @@ set -e
 # Flowrail CLI Driver & Launcher
 # Resolves native binary or runs via Cargo with full stdio transparency for MCP
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Resolve symlink chain if invoked via a symlink
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+ROOT_DIR="$(cd -P "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
 
 # 1. Check if flowrail is already installed in PATH
 if command -v flowrail >/dev/null 2>&1 && [ "$(command -v flowrail)" != "${BASH_SOURCE[0]}" ]; then

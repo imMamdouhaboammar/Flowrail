@@ -96,6 +96,7 @@ fn load_graph(workspace: &std::path::Path) -> Result<flowrail_core::graph::Codeb
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let raw_workspace = cli.workspace.clone();
     let workspace = cli.workspace.canonicalize().unwrap_or(cli.workspace);
 
     match cli.command {
@@ -230,11 +231,17 @@ fn main() -> Result<()> {
             let flowrail_dir = workspace.join(".flowrail");
             std::fs::create_dir_all(&flowrail_dir)?;
 
+            let workspace_arg = if raw_workspace == std::path::Path::new(".") {
+                ".".to_string()
+            } else {
+                workspace.to_string_lossy().to_string()
+            };
+
             let mcp_config = serde_json::json!({
                 "mcpServers": {
                     "flowrail": {
                         "command": "flowrail",
-                        "args": ["--workspace", workspace.to_string_lossy(), "mcp"]
+                        "args": ["--workspace", workspace_arg, "mcp"]
                     }
                 }
             });
@@ -266,9 +273,7 @@ fn main() -> Result<()> {
             }
 
             if target == "all" || target == "claude" {
-                let claude_dir = workspace.join(".claude");
-                std::fs::create_dir_all(&claude_dir)?;
-                let claude_mcp_path = claude_dir.join("mcp.json");
+                let claude_mcp_path = workspace.join(".mcp.json");
                 if force || !claude_mcp_path.exists() {
                     std::fs::write(&claude_mcp_path, &mcp_str)?;
                     println!(

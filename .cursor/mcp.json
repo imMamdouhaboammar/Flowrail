@@ -1,12 +1,12 @@
 {
   "mcpServers": {
     "flowrail": {
+      "command": "flowrail",
       "args": [
         "--workspace",
-        "/Users/mamdouhaboammar/Documents/M-Research/Flowrail",
+        ".",
         "mcp"
-      ],
-      "command": "flowrail"
+      ]
     }
   }
 }

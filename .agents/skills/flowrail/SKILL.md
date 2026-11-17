@@ -24,7 +24,7 @@ metadata:
 3. **Contagion Blindness:** Modifying a shared interface or DTO in Feature A silently breaks Features B, C, and D outside the agent's active context.
 4. **Erratic Multi-File Hopping:** Without mechanical state enforcement, agents jump randomly across files, leaving intermediate files broken.
 
-**Target state:** Flowrail replaces unconstrained repository reading/writing with a deterministic state machine exposed via standard MCP tools, ensuring zero regressions, zero out-of-order edits, and verified compilation at every step.
+**Target state:** Flowrail replaces unconstrained repository reading/writing with a deterministic state machine exposed via standard MCP tools, ensuring zero regressions, zero out-of-order edits, and verified step transitions (syntax checking via Tier 1 OXC parser by default; full type-checking when `--full-typecheck` is enabled).
 
 ---
 
@@ -61,7 +61,7 @@ The Flowrail MCP server communicates over `stdio` via JSON-RPC 2.0. Both `flowra
 - `flowrail_propose_edit({ gate_index, new_file_content, acknowledge_blast_radius })`:
   Applies proposed content, hashes exported contracts, runs Tier 1 OXC AST syntax verification, and checks for contagion.
 - `flowrail_advance_gate()`:
-  Verifies compilation. If contract hash changed and external dependents exist without `acknowledge_blast_radius: true`, halts with `CONTAGION_BARRIER`. If acknowledged, injects external files as new locked gates, locks active gate as `VERIFIED`, and unlocks Gate N+1.
+  Verifies syntax with the Tier 1 OXC parser (or runs incremental `tsc --noEmit` on the active file if `--full-typecheck` is enabled). If contract hash changed and external dependents exist without `acknowledge_blast_radius: true`, halts with `CONTAGION_BARRIER`. If acknowledged, injects external files as new locked gates, locks active gate as `VERIFIED`, and unlocks Gate N+1.
 - `flowrail_abort_or_rollback({ to_gate_index })`:
   Rolls back working tree files to checkpoint `to_gate_index` and relocks downstream gates.
 

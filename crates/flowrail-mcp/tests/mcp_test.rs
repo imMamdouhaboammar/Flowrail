@@ -2,11 +2,41 @@ use flowrail_core::graph::{CodebaseGraph, NodeRole, SemanticNode};
 use flowrail_mcp::tools::CorridorMcpEngine;
 use serde_json::json;
 use std::fs;
+use std::path::PathBuf;
+
+struct TempDirGuard(PathBuf);
+
+impl TempDirGuard {
+    fn new(prefix: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "{}_{}_{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 #[test]
 fn test_mcp_tools_lifecycle() {
-    let temp_dir = std::env::temp_dir().join(format!("flowrail_mcp_test_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&temp_dir);
+    let guard = TempDirGuard::new("flowrail_mcp_test");
+    let temp_dir = guard.path().to_path_buf();
     fs::create_dir_all(temp_dir.join("src/checkout")).unwrap();
 
     let file_path = "src/checkout/checkout.controller.ts";
@@ -143,6 +173,4 @@ fn test_mcp_tools_lifecycle() {
 
     let restored = fs::read_to_string(&abs_path).unwrap();
     assert_eq!(restored, original_code);
-
-    let _ = fs::remove_dir_all(&temp_dir);
 }
