@@ -67,7 +67,7 @@ fi
 
 echo ""
 echo "🔍 Running Flowrail Doctor..."
-flowrail doctor
+"${CARGO_BIN_DIR}/flowrail" doctor
 
 echo ""
 echo "🎉 Flowrail is successfully installed!"
