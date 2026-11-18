@@ -14,6 +14,13 @@ pub enum GitFileStatus {
     Untracked,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoChangeCoupling {
+    pub file_path: String,
+    pub co_change_count: usize,
+    pub confidence_percentage: usize,
+}
+
 impl GitFileStatus {
     pub fn badge(&self) -> &'static str {
         match self {
@@ -153,5 +160,129 @@ impl GitStatusResolver {
         }
 
         map
+    }
+
+    pub fn get_head_commit(workspace_root: &Path) -> Option<String> {
+        let repo = Repository::discover(workspace_root).ok()?;
+        let head = repo.head().ok()?;
+        let target = head.target()?;
+        let mut composite_head = target.to_string();
+
+        // Inspect git submodules deterministically to detect submodule HEAD updates
+        if let Ok(mut submodules) = repo.submodules() {
+            submodules.sort_by(|a, b| a.path().cmp(b.path()));
+            for sm in submodules {
+                let sm_path = sm.path().to_string_lossy();
+                let sm_oid = sm
+                    .workdir_id()
+                    .or_else(|| sm.head_id())
+                    .or_else(|| sm.index_id());
+                if let Some(oid) = sm_oid {
+                    composite_head.push('|');
+                    composite_head.push_str(&sm_path);
+                    composite_head.push(':');
+                    composite_head.push_str(&oid.to_string());
+                }
+            }
+        }
+
+        Some(composite_head)
+    }
+
+    /// Discovers files that historically change together with `target_files` (CodeScene pattern).
+    /// Inspects the last `max_commits` commits via git revwalk.
+    pub fn find_co_changed_files(
+        workspace_root: &Path,
+        target_files: &[String],
+        max_commits: usize,
+        min_co_changes: usize,
+    ) -> Vec<CoChangeCoupling> {
+        let Ok(repo) = Repository::discover(workspace_root) else {
+            return Vec::new();
+        };
+
+        let mut revwalk = match repo.revwalk() {
+            Ok(rw) => rw,
+            Err(_) => return Vec::new(),
+        };
+
+        let _ = revwalk.push_head();
+        let _ = revwalk.set_sorting(git2::Sort::TIME);
+
+        let target_set: std::collections::HashSet<&str> =
+            target_files.iter().map(|s| s.as_str()).collect();
+        if target_set.is_empty() {
+            return Vec::new();
+        }
+
+        let mut target_commit_count = 0usize;
+        let mut co_change_counts: HashMap<String, usize> = HashMap::new();
+
+        for oid_res in revwalk.take(max_commits) {
+            let Ok(oid) = oid_res else { continue };
+            let Ok(commit) = repo.find_commit(oid) else { continue };
+            if commit.parent_count() > 1 {
+                // Skip merge commits for clean delta attribution
+                continue;
+            }
+
+            let tree = match commit.tree() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+
+            let parent_tree = if commit.parent_count() == 1 {
+                commit.parent(0).ok().and_then(|p| p.tree().ok())
+            } else {
+                None
+            };
+
+            let mut diff_opts = git2::DiffOptions::new();
+            let diff = match repo.diff_tree_to_tree(
+                parent_tree.as_ref(),
+                Some(&tree),
+                Some(&mut diff_opts),
+            ) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+
+            let mut commit_files = std::collections::HashSet::new();
+            for delta in diff.deltas() {
+                if let Some(path) = delta.new_file().path() {
+                    commit_files.insert(path.to_string_lossy().to_string());
+                }
+            }
+
+            let has_target = commit_files.iter().any(|f| target_set.contains(f.as_str()));
+            if has_target {
+                target_commit_count += 1;
+                for f in commit_files {
+                    if !target_set.contains(f.as_str()) {
+                        *co_change_counts.entry(f).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+
+        if target_commit_count == 0 {
+            return Vec::new();
+        }
+
+        let mut results: Vec<CoChangeCoupling> = co_change_counts
+            .into_iter()
+            .filter(|(_, count)| *count >= min_co_changes)
+            .map(|(file_path, count)| {
+                let conf = (count * 100) / target_commit_count;
+                CoChangeCoupling {
+                    file_path,
+                    co_change_count: count,
+                    confidence_percentage: conf,
+                }
+            })
+            .collect();
+
+        results.sort_by_key(|a| std::cmp::Reverse(a.co_change_count));
+        results
     }
 }

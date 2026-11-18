@@ -1,4 +1,6 @@
-use flowrail_core::graph::{CodebaseGraph, EdgeKind, NodeRole, SemanticEdge, SemanticNode};
+use flowrail_core::graph::{
+    CodebaseGraph, EdgeConfidence, EdgeKind, NodeRole, SemanticEdge, SemanticNode,
+};
 
 #[test]
 fn test_graph_add_nodes_and_edges() {
@@ -42,6 +44,7 @@ fn test_graph_add_nodes_and_edges() {
             kind: EdgeKind::Calls,
             call_site_line: 18,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
 
@@ -95,5 +98,51 @@ fn test_graph_add_nodes_and_edges() {
     assert_eq!(
         graph.resolve_symbol("checkout.controller.ts:CheckoutController"),
         Some(idx_scip)
+    );
+}
+
+#[test]
+fn test_graph_pagerank_hub_scoring() {
+    let mut graph = CodebaseGraph::new();
+
+    let mut make_node = |name: &str, role: NodeRole| {
+        graph.add_node(SemanticNode {
+            symbol_id: format!("src/{}.ts#{}", name, name),
+            display_name: name.to_string(),
+            file_path: format!("src/{}.ts", name),
+            byte_range: (0, 50),
+            line_range: (1, 10),
+            role,
+            signature_hash: format!("hash_{}", name),
+            mutates_domain_state: false,
+            is_exported: true,
+        })
+    };
+
+    let c1 = make_node("Ctrl1", NodeRole::EntryGate);
+    let c2 = make_node("Ctrl2", NodeRole::EntryGate);
+    let c3 = make_node("Ctrl3", NodeRole::EntryGate);
+    let core_svc = make_node("CoreService", NodeRole::BusinessLogic);
+    let repo = make_node("Repo", NodeRole::DataRepository);
+
+    let make_edge = || SemanticEdge {
+        kind: EdgeKind::Calls,
+        call_site_line: 5,
+        is_dynamic_trace: false,
+        confidence: EdgeConfidence::Extracted,
+    };
+
+    graph.add_edge(c1, core_svc, make_edge());
+    graph.add_edge(c2, core_svc, make_edge());
+    graph.add_edge(c3, core_svc, make_edge());
+    graph.add_edge(core_svc, repo, make_edge());
+
+    let pr = graph.compute_pagerank(0.85, 20);
+    let svc_rank = pr.get("src/CoreService.ts#CoreService").copied().unwrap();
+    let c1_rank = pr.get("src/Ctrl1.ts#Ctrl1").copied().unwrap();
+
+    assert!(
+        svc_rank > c1_rank,
+        "CoreService ({svc_rank}) should outrank Ctrl1 ({c1_rank})"
     );
 }

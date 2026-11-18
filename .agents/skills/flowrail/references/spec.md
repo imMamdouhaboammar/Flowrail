@@ -28,3 +28,7 @@ Where:
 | `SYNTAX_ERROR` | Proposed code fails Tier 1 `oxc_parser` syntax validation. | Fix syntax errors reported in the error message before advancing. |
 | `TYPE_ERROR` | Incremental `tsc --noEmit` fails within the active file. | Resolve type contradictions. |
 | `CONTAGION_BARRIER` | Exported contract hash changed and external files depend on old signature, but `acknowledge_blast_radius` is false. | Re-propose edit with `acknowledge_blast_radius: true` to inject broken external files as mandatory gates. |
+| `HALLUCINATED_SYMBOL_REJECTED` | AI enrichment in `flowrail_enrich_artifact` references a symbol not present in deterministic graph. | Cite only verified symbols present in the deterministic payload. |
+| `HALLUCINATED_FILE_REJECTED` | AI enrichment in `flowrail_enrich_artifact` references a file not present in corridor gates or git status. | Cite only verified file paths present in the deterministic payload. |
+| `ADHD_VIOLATION_RULE_9` | Bounded steps or visible wins list exceeds 5 items. | Bound step and win lists strictly to $\le 5$ items. |
+| `CONVERSATIONAL_FLUFF_REJECTED` | AI enrichment contains conversational pleasantries or marketing hyperbole. | Provide direct technical payloads with zero conversational filler. |

@@ -1,4 +1,4 @@
-use flowrail_core::graph::{EdgeKind, NodeRole, SemanticNode};
+use flowrail_core::graph::{EdgeConfidence, EdgeKind, NodeRole, SemanticNode};
 use flowrail_core::slicer::{
     BlastRadiusReport, BlastRiskLevel, CorridorGate, CorridorPlan, ExternalDependent, GateStatus,
     SliceIntent,
@@ -64,6 +64,7 @@ fn test_state_machine_contagion_barrier_and_rollback() {
         file_path: "src/invoicing/invoice.ts".to_string(),
         call_site_line: 10,
         edge_kind: EdgeKind::ReferencesType,
+        confidence: EdgeConfidence::Extracted,
     };
 
     let gate0 = CorridorGate {
@@ -76,6 +77,8 @@ fn test_state_machine_contagion_barrier_and_rollback() {
             contagion_index: 1,
             risk_level: BlastRiskLevel::Moderate,
             external_dependents: vec![ext_dep],
+            has_ambiguous_dependents: false,
+            co_changed_files: Vec::new(),
         },
     };
 

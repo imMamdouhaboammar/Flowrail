@@ -143,3 +143,90 @@ fn test_cli_init() {
     assert!(temp_dir.join(".cursor/mcp.json").exists());
     assert!(temp_dir.join(".mcp.json").exists());
 }
+
+#[test]
+fn test_cli_artifact_lifecycle() {
+    let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("fixtures/sample-ts-ecommerce");
+
+    let guard = TempDirGuard::new("flowrail_art_cli");
+    let temp_workspace = guard.path().to_path_buf();
+
+    // Copy fixture files into temp workspace
+    let copy_status = Command::new("cp")
+        .arg("-R")
+        .arg(format!("{}/", fixture_dir.to_str().unwrap()))
+        .arg(temp_workspace.to_str().unwrap())
+        .status()
+        .expect("Copy fixture files");
+    assert!(copy_status.success());
+
+    let entry = "src/modules/checkout/checkout.controller.ts#CheckoutController";
+
+    // 1. Slice with --artifact
+    let slice_out = Command::new(env!("CARGO_BIN_EXE_flowrail"))
+        .arg("--workspace")
+        .arg(temp_workspace.to_str().unwrap())
+        .arg("slice")
+        .arg("--entry")
+        .arg(entry)
+        .arg("--artifact")
+        .output()
+        .expect("flowrail slice --artifact should run");
+
+    assert!(slice_out.status.success());
+    let slice_stdout = String::from_utf8_lossy(&slice_out.stdout);
+    assert!(slice_stdout.contains("\"schema_version\": \"flowrail.artifact.v1\""));
+    assert!(slice_stdout.contains("\"headline_action\""));
+
+    let latest_art_file = temp_workspace.join(".flowrail/artifacts/latest.json");
+    assert!(latest_art_file.exists(), "latest.json must be generated");
+
+    // 2. Artifact show
+    let show_out = Command::new(env!("CARGO_BIN_EXE_flowrail"))
+        .arg("--workspace")
+        .arg(temp_workspace.to_str().unwrap())
+        .arg("artifact")
+        .arg("show")
+        .output()
+        .expect("flowrail artifact show should run");
+
+    assert!(show_out.status.success());
+    let show_stdout = String::from_utf8_lossy(&show_out.stdout);
+    assert!(show_stdout.contains("flowrail.artifact.v1"));
+
+    // 3. Artifact list
+    let list_out = Command::new(env!("CARGO_BIN_EXE_flowrail"))
+        .arg("--workspace")
+        .arg(temp_workspace.to_str().unwrap())
+        .arg("artifact")
+        .arg("list")
+        .output()
+        .expect("flowrail artifact list should run");
+
+    assert!(list_out.status.success());
+    let list_stdout = String::from_utf8_lossy(&list_out.stdout);
+    assert!(list_stdout.contains("Flowrail Generated Artifacts"));
+
+    // 4. Artifact validate
+    let val_out = Command::new(env!("CARGO_BIN_EXE_flowrail"))
+        .arg("--workspace")
+        .arg(temp_workspace.to_str().unwrap())
+        .arg("artifact")
+        .arg("validate")
+        .arg("--file")
+        .arg(latest_art_file.to_str().unwrap())
+        .output()
+        .expect("flowrail artifact validate should run");
+
+    assert!(val_out.status.success());
+    let val_stdout = String::from_utf8_lossy(&val_out.stdout);
+    assert!(val_stdout.contains("Validation PASSED"));
+    assert!(val_stdout.contains("Zero Hallucination"));
+    assert!(val_stdout.contains("ADHD Constraints"));
+    assert!(val_stdout.contains("Anti-Slop Discipline"));
+}

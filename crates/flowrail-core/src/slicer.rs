@@ -1,4 +1,4 @@
-use crate::graph::{CodebaseGraph, EdgeKind, NodeRole, SemanticNode};
+use crate::graph::{CodebaseGraph, EdgeConfidence, EdgeKind, NodeRole, SemanticNode};
 use crate::pruning::{PruneEvaluator, PrunedNodeRecord, PruningConfig};
 use anyhow::{Result, anyhow};
 use petgraph::Direction;
@@ -35,6 +35,8 @@ pub struct ExternalDependent {
     pub file_path: String,
     pub call_site_line: usize,
     pub edge_kind: EdgeKind,
+    #[serde(default)]
+    pub confidence: EdgeConfidence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +44,28 @@ pub struct BlastRadiusReport {
     pub contagion_index: usize,
     pub risk_level: BlastRiskLevel,
     pub external_dependents: Vec<ExternalDependent>,
+    #[serde(default)]
+    pub has_ambiguous_dependents: bool,
+    #[serde(default)]
+    pub co_changed_files: Vec<String>,
+}
+
+impl Default for BlastRadiusReport {
+    fn default() -> Self {
+        Self {
+            contagion_index: 0,
+            risk_level: BlastRiskLevel::SafeInternal,
+            external_dependents: Vec::new(),
+            has_ambiguous_dependents: false,
+            co_changed_files: Vec::new(),
+        }
+    }
+}
+
+impl BlastRadiusReport {
+    pub fn safe_internal() -> Self {
+        Self::default()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -316,6 +340,7 @@ impl CorridorSlicer {
         corridor_gates_set: &HashSet<NodeIndex>,
     ) -> BlastRadiusReport {
         let mut external_dependents = Vec::new();
+        let mut has_ambiguous_dependents = false;
 
         for edge in graph.graph.edges_directed(node_idx, Direction::Incoming) {
             let caller_idx = edge.source();
@@ -323,11 +348,23 @@ impl CorridorSlicer {
                 continue;
             }
             let caller_node = &graph.graph[caller_idx];
+            let edge_data = edge.weight();
+            let confidence = if edge_data.is_dynamic_trace {
+                EdgeConfidence::Ambiguous
+            } else {
+                edge_data.confidence
+            };
+
+            if confidence == EdgeConfidence::Ambiguous {
+                has_ambiguous_dependents = true;
+            }
+
             external_dependents.push(ExternalDependent {
                 symbol_id: caller_node.symbol_id.clone(),
                 file_path: caller_node.file_path.clone(),
-                call_site_line: edge.weight().call_site_line,
-                edge_kind: edge.weight().kind,
+                call_site_line: edge_data.call_site_line,
+                edge_kind: edge_data.kind,
+                confidence,
             });
         }
 
@@ -342,6 +379,8 @@ impl CorridorSlicer {
             contagion_index,
             risk_level,
             external_dependents,
+            has_ambiguous_dependents,
+            co_changed_files: Vec::new(),
         }
     }
 }

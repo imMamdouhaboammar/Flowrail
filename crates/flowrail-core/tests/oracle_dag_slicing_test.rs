@@ -1,4 +1,6 @@
-use flowrail_core::graph::{CodebaseGraph, EdgeKind, NodeRole, SemanticEdge, SemanticNode};
+use flowrail_core::graph::{
+    CodebaseGraph, EdgeConfidence, EdgeKind, NodeRole, SemanticEdge, SemanticNode,
+};
 use flowrail_core::pruning::PruningConfig;
 use flowrail_core::slicer::{CorridorSlicer, SliceIntent};
 
@@ -69,6 +71,7 @@ fn test_oracle_dag_mutation_topological_order_invariant() {
             kind: EdgeKind::Calls,
             call_site_line: 5,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
     graph.add_edge(
@@ -78,6 +81,7 @@ fn test_oracle_dag_mutation_topological_order_invariant() {
             kind: EdgeKind::MutatesState,
             call_site_line: 7,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
     // External dependency: AdminWorker -> Repository
@@ -88,6 +92,7 @@ fn test_oracle_dag_mutation_topological_order_invariant() {
             kind: EdgeKind::Calls,
             call_site_line: 12,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
 

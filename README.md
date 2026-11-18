@@ -90,7 +90,7 @@ All three contain:
 }
 ```
 
-After `init`, restart your editor. Flowrail's eight MCP tools become available to any agent running in that workspace.
+After `init`, restart your editor. Flowrail's ten MCP tools become available to any agent running in that workspace.
 
 To apply to every project without running `init` per repo, add the global config to your editor's user MCP settings pointing `--workspace` at `${workspaceFolder}`.
 
@@ -104,6 +104,7 @@ flowrail doctor                    # Verify the semantic graph, AST engine, and 
 flowrail search "checkout"         # Fuzzy symbol search with Git status and frecency ranking
 flowrail grep "TaxResult"          # In-memory grep, corridor-scoped or workspace-wide
 flowrail slice -e "<symbol>"       # Print a JSON corridor plan to stdout
+flowrail artifact show             # Show latest artifact JSON (.flowrail/artifacts/latest.json)
 flowrail mcp                       # Start the stdio MCP server (used by editors automatically)
 ```
 
@@ -123,6 +124,8 @@ The MCP server speaks JSON-RPC 2.0 over stdio. Both `flowrail_*` and `corridor_*
 | `flowrail_propose_edit` | Applies a proposed file content, checks syntax with OXC, hashes exported contracts |
 | `flowrail_advance_gate` | Verifies the active gate, locks it, and unlocks Gate N+1 |
 | `flowrail_abort_or_rollback` | Reverts files to any prior gate checkpoint |
+| `flowrail_export_artifact` | Exports the current session artifact to `.flowrail/artifacts/latest.json`; can persist to disk or return inline JSON |
+| `flowrail_enrich_artifact` | Applies validated AI enrichment to the deterministic artifact (headline_action, bounded_steps, visible_wins, error_diagnostic) with hallucination rejection |
 
 Full tool contracts: [`.agents/skills/flowrail/SKILL.md`](.agents/skills/flowrail/SKILL.md)
 

@@ -1,7 +1,9 @@
 use crate::ast_slicer::{ExtractedImport, TsAstSlicer};
 use crate::tsconfig::TsConfigResolver;
 use anyhow::{Context, Result};
-use flowrail_core::graph::{CodebaseGraph, EdgeKind, NodeRole, SemanticEdge, SemanticNode};
+use flowrail_core::graph::{
+    CodebaseGraph, EdgeConfidence, EdgeKind, NodeRole, SemanticEdge, SemanticNode,
+};
 use protobuf::Message;
 use scip::types::{Index as ScipIndex, SymbolRole};
 use std::collections::HashMap;
@@ -131,6 +133,7 @@ impl ScipGraphBuilder {
                             kind: edge_kind,
                             call_site_line: ref_line,
                             is_dynamic_trace: false,
+                            confidence: EdgeConfidence::Extracted,
                         },
                     );
                 }
@@ -256,6 +259,7 @@ impl ScipGraphBuilder {
                                             kind,
                                             call_site_line: caller_node.line_range.0,
                                             is_dynamic_trace: false,
+                                            confidence: EdgeConfidence::Extracted,
                                         },
                                     );
                                 }
@@ -287,6 +291,7 @@ impl ScipGraphBuilder {
                                         kind,
                                         call_site_line: primary_node.line_range.0,
                                         is_dynamic_trace: false,
+                                        confidence: EdgeConfidence::Extracted,
                                     },
                                 );
                             }
@@ -326,6 +331,7 @@ impl ScipGraphBuilder {
                                         kind,
                                         call_site_line: node.line_range.0,
                                         is_dynamic_trace: false,
+                                        confidence: EdgeConfidence::Inferred,
                                     },
                                 );
                             }

@@ -1,4 +1,6 @@
-use flowrail_core::graph::{CodebaseGraph, EdgeKind, NodeRole, SemanticEdge, SemanticNode};
+use flowrail_core::graph::{
+    CodebaseGraph, EdgeConfidence, EdgeKind, NodeRole, SemanticEdge, SemanticNode,
+};
 use flowrail_core::pruning::PruningConfig;
 use flowrail_core::slicer::{CorridorSlicer, GateStatus, SliceIntent};
 
@@ -53,6 +55,7 @@ fn test_forward_slice_read_flow() {
             kind: EdgeKind::Calls,
             call_site_line: 12,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
     graph.add_edge(
@@ -62,6 +65,7 @@ fn test_forward_slice_read_flow() {
             kind: EdgeKind::Calls,
             call_site_line: 25,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
 
@@ -153,6 +157,7 @@ fn test_backward_slice_mutation_dag_and_contagion() {
             kind: EdgeKind::Calls,
             call_site_line: 15,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
     graph.add_edge(
@@ -162,6 +167,7 @@ fn test_backward_slice_mutation_dag_and_contagion() {
             kind: EdgeKind::ReferencesType,
             call_site_line: 8,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
 
@@ -173,6 +179,7 @@ fn test_backward_slice_mutation_dag_and_contagion() {
             kind: EdgeKind::ReferencesType,
             call_site_line: 12,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
 
@@ -252,6 +259,7 @@ fn test_mutation_dag_diamond_topological_ordering() {
             kind: EdgeKind::Calls,
             call_site_line: 3,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
     graph.add_edge(
@@ -261,6 +269,7 @@ fn test_mutation_dag_diamond_topological_ordering() {
             kind: EdgeKind::Calls,
             call_site_line: 5,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
     graph.add_edge(
@@ -270,6 +279,7 @@ fn test_mutation_dag_diamond_topological_ordering() {
             kind: EdgeKind::Calls,
             call_site_line: 7,
             is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
         },
     );
 

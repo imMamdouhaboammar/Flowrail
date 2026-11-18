@@ -5,7 +5,7 @@ set -e
 # Usage:
 #   ./install.sh
 # or remotely:
-#   curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/master/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/main/install.sh | bash
 
 echo "=========================================================="
 echo "  🚀 Installing Flowrail (Project Ariadne)"

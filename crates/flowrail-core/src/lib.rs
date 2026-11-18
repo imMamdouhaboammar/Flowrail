@@ -1,3 +1,4 @@
+pub mod artifact;
 pub mod contract;
 pub mod frecency;
 pub mod git;

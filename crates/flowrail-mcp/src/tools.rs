@@ -1,7 +1,8 @@
 use anyhow::{Result, anyhow};
+use flowrail_core::artifact::{AiEnrichment, FlowrailArtifact};
 use flowrail_core::frecency::FrecencyStore;
 use flowrail_core::git::GitStatusResolver;
-use flowrail_core::graph::CodebaseGraph;
+use flowrail_core::graph::{CodebaseGraph, NodeRole};
 use flowrail_core::grep::{CorridorGrep, GrepScope};
 use flowrail_core::pruning::PruningConfig;
 use flowrail_core::search::FuzzySearchEngine;
@@ -138,7 +139,9 @@ impl CorridorMcpEngine {
                         "properties": {
                             "entry_symbol": { "type": "string", "description": "Exact symbol_id of the Entry Gate" },
                             "intent": { "type": "string", "enum": ["READ_FLOW", "MUTATE_CONTRACT"] },
-                            "target_mutation_symbol": { "type": "string", "description": "Required when intent is MUTATE_CONTRACT" }
+                            "target_mutation_symbol": { "type": "string", "description": "Required when intent is MUTATE_CONTRACT" },
+                            "detail_level": { "type": "string", "enum": ["minimal", "full"], "default": "full", "description": "Token efficiency mode. 'minimal' yields a concise summary." },
+                            "max_depth": { "type": "integer", "description": "Maximum corridor traversal depth (Augment Code pattern). Default: 12." }
                         }
                     }
                 },
@@ -151,7 +154,9 @@ impl CorridorMcpEngine {
                         "properties": {
                             "entry_symbol": { "type": "string", "description": "Exact symbol_id of the Entry Gate" },
                             "intent": { "type": "string", "enum": ["READ_FLOW", "MUTATE_CONTRACT"] },
-                            "target_mutation_symbol": { "type": "string", "description": "Required when intent is MUTATE_CONTRACT" }
+                            "target_mutation_symbol": { "type": "string", "description": "Required when intent is MUTATE_CONTRACT" },
+                            "detail_level": { "type": "string", "enum": ["minimal", "full"], "default": "full" },
+                            "max_depth": { "type": "integer" }
                         }
                     }
                 },
@@ -163,7 +168,8 @@ impl CorridorMcpEngine {
                         "required": ["gate_index"],
                         "properties": {
                             "gate_index": { "type": "integer" },
-                            "compact": { "type": "boolean", "default": false, "description": "When true, returns summary and contracts without dumping raw file lines" }
+                            "compact": { "type": "boolean", "default": false, "description": "When true, returns summary and contracts without dumping raw file lines" },
+                            "detail_level": { "type": "string", "enum": ["minimal", "full"], "description": "Token efficiency mode. 'minimal' omits source code lines." }
                         }
                     }
                 },
@@ -175,7 +181,8 @@ impl CorridorMcpEngine {
                         "required": ["gate_index"],
                         "properties": {
                             "gate_index": { "type": "integer" },
-                            "compact": { "type": "boolean", "default": false }
+                            "compact": { "type": "boolean", "default": false },
+                            "detail_level": { "type": "string", "enum": ["minimal", "full"] }
                         }
                     }
                 },
@@ -242,6 +249,54 @@ impl CorridorMcpEngine {
                             "to_gate_index": { "type": "integer" }
                         }
                     }
+                },
+                {
+                    "name": "corridor_export_artifact",
+                    "description": "Exports the active corridor session or plan as a Clean/Clear JSON artifact enforcing ADHD and Anti-Slop standards. Saves to .flowrail/artifacts/latest.json.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "save_to_disk": { "type": "boolean", "default": true, "description": "Whether to write artifact to .flowrail/artifacts/" }
+                        }
+                    }
+                },
+                {
+                    "name": "flowrail_export_artifact",
+                    "description": "Alias for corridor_export_artifact",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "save_to_disk": { "type": "boolean", "default": true }
+                        }
+                    }
+                },
+                {
+                    "name": "corridor_enrich_artifact",
+                    "description": "Applies and validates AI enrichment on the active corridor artifact without hallucination, enforcing ADHD rules (lead with action, <=5 steps, terminal action) and Anti-Slop gates (grounded symbols/files, zero conversational fluff).",
+                    "inputSchema": {
+                        "type": "object",
+                        "required": ["enrichment"],
+                        "properties": {
+                            "enrichment": {
+                                "type": "object",
+                                "description": "Enrichment payload containing adhd_view, anti_slop_contract, and human_readable_summary"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "flowrail_enrich_artifact",
+                    "description": "Alias for corridor_enrich_artifact",
+                    "inputSchema": {
+                        "type": "object",
+                        "required": ["enrichment"],
+                        "properties": {
+                            "enrichment": {
+                                "type": "object",
+                                "description": "Enrichment payload containing adhd_view, anti_slop_contract, and human_readable_summary"
+                            }
+                        }
+                    }
                 }
             ]
         })
@@ -259,6 +314,12 @@ impl CorridorMcpEngine {
             "corridor_propose_edit" | "flowrail_propose_edit" => self.tool_propose_edit(args),
             "corridor_advance_gate" | "flowrail_advance_gate" => self.tool_advance_gate(),
             "corridor_abort_or_rollback" | "flowrail_abort_or_rollback" => self.tool_rollback(args),
+            "corridor_export_artifact" | "flowrail_export_artifact" => {
+                self.tool_export_artifact(args)
+            }
+            "corridor_enrich_artifact" | "flowrail_enrich_artifact" => {
+                self.tool_enrich_artifact(args)
+            }
             _ => Err(anyhow!("Unknown Flowrail / Corridor MCP tool: {}", name)),
         }
     }
@@ -288,24 +349,34 @@ impl CorridorMcpEngine {
             FuzzySearchEngine::new(&self.graph, Some(&self.git_resolver), Some(&self.frecency));
 
         let hits = search_engine.search(query, definitions_only, git_only, max_results);
+        let pagerank = self.graph.compute_pagerank(0.85, 20);
 
-        let entrypoints: Vec<Value> = hits
+        let mut entrypoints: Vec<Value> = hits
             .into_iter()
             .map(|h| {
+                let pr_score = pagerank.get(&h.symbol_id).copied().unwrap_or(0.0);
+                let final_score = h.score + (pr_score * 50.0);
                 json!({
                     "symbol_id": h.symbol_id,
                     "display_name": h.display_name,
                     "file_path": h.file_path,
                     "line_range": h.line_range,
                     "role": h.role,
+                    "pagerank_score": (pr_score * 1000.0).round() / 1000.0,
                     "git_status": h.git_status,
                     "git_badge": h.git_status.badge(),
-                    "score": h.score,
+                    "score": final_score,
                     "frecency_score": h.frecency_score,
                     "match_stage": h.stage
                 })
             })
             .collect();
+
+        entrypoints.sort_by(|a, b| {
+            let sa = a["score"].as_f64().unwrap_or(0.0);
+            let sb = b["score"].as_f64().unwrap_or(0.0);
+            sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(serde_json::to_string_pretty(&json!({
             "entrypoints_count": entrypoints.len(),
@@ -346,6 +417,8 @@ impl CorridorMcpEngine {
                     "display_name": h.display_name,
                     "file_path": h.file_path,
                     "line_range": h.line_range,
+                    "def_location": format!("{}:{}", h.file_path, h.line_range.0),
+                    "is_definition": matches!(h.role, NodeRole::ContractDefinition | NodeRole::EntryGate),
                     "role": h.role,
                     "git_status": h.git_status,
                     "git_badge": h.git_status.badge(),
@@ -477,7 +550,10 @@ impl CorridorMcpEngine {
         };
 
         let target_mutation = args.get("target_mutation_symbol").and_then(|v| v.as_str());
-        let config = PruningConfig::default();
+        let mut config = PruningConfig::default();
+        if let Some(md) = args.get("max_depth").and_then(|v| v.as_u64()) {
+            config.max_corridor_depth = (md as usize).clamp(1, 100);
+        }
 
         let plan = CorridorSlicer::build_corridor(
             &self.graph,
@@ -490,36 +566,89 @@ impl CorridorMcpEngine {
         // Record frecency access
         self.frecency.record_access(entry_symbol);
 
-        let session = CorridorSession::new(plan, self.workspace_root.clone());
-        let gate_summaries: Vec<Value> = session
+        let detail_level = args
+            .get("detail_level")
+            .and_then(|v| v.as_str())
+            .unwrap_or("full");
+        let is_minimal = detail_level == "minimal";
+
+        let mut session = CorridorSession::new(plan, self.workspace_root.clone());
+
+        let target_files: Vec<String> = session
             .plan
             .gates
             .iter()
-            .map(|g| {
-                json!({
-                    "gate_index": g.gate_index,
-                    "status": g.status,
-                    "symbol_id": g.node.symbol_id,
-                    "file_path": g.node.file_path,
-                    "role": g.node.role,
-                    "blast_radius_risk": g.blast_radius.risk_level,
-                    "external_dependents_count": g.blast_radius.contagion_index
-                })
-            })
+            .map(|g| g.node.file_path.clone())
             .collect();
 
+        let co_changes = GitStatusResolver::find_co_changed_files(
+            &self.workspace_root,
+            &target_files,
+            100,
+            2,
+        );
+        let co_change_paths: Vec<String> = co_changes.into_iter().map(|c| c.file_path).collect();
+
+        if !co_change_paths.is_empty() && !session.plan.gates.is_empty() {
+            session.plan.gates[0].blast_radius.co_changed_files = co_change_paths.clone();
+        }
+
+        let gate_summaries: Vec<Value> = if is_minimal {
+            session
+                .plan
+                .gates
+                .iter()
+                .map(|g| {
+                    json!({
+                        "gate_index": g.gate_index,
+                        "status": g.status,
+                        "symbol_id": g.node.symbol_id,
+                        "blast_risk": g.blast_radius.risk_level
+                    })
+                })
+                .collect()
+        } else {
+            session
+                .plan
+                .gates
+                .iter()
+                .map(|g| {
+                    json!({
+                        "gate_index": g.gate_index,
+                        "status": g.status,
+                        "symbol_id": g.node.symbol_id,
+                        "file_path": g.node.file_path,
+                        "role": g.node.role,
+                        "blast_radius_risk": g.blast_radius.risk_level,
+                        "external_dependents_count": g.blast_radius.contagion_index
+                    })
+                })
+                .collect()
+        };
+
         let corridor_id = session.plan.corridor_id.clone();
+        let built_at_commit = session.built_at_commit.clone();
         let pruned_count = session.plan.pruned_nodes.len();
         self.session = Some(session);
 
         let state_file = self.workspace_root.join(".corridor/active_session.json");
         let _ = self.session.as_ref().unwrap().save_to_disk(&state_file);
 
+        let artifact = FlowrailArtifact::from_session(
+            self.session.as_ref().unwrap(),
+            Some(&self.git_resolver),
+        );
+        let artifact_path = artifact.save_to_workspace(&self.workspace_root).ok();
+
         Ok(serde_json::to_string_pretty(&json!({
             "corridor_id": corridor_id,
+            "artifact_id": artifact.artifact_id,
+            "artifact_file": artifact_path.map(|p| p.to_string_lossy().to_string()),
+            "built_at_commit": built_at_commit,
             "active_gate_index": 0,
             "gates_count": gate_summaries.len(),
             "pruned_utility_nodes_count": pruned_count,
+            "co_changed_files_warning": if co_change_paths.is_empty() { Value::Null } else { json!(co_change_paths) },
             "roadmap": gate_summaries,
             "instruction": "Gate 0 is now UNLOCKED. Call `corridor_inspect_gate(0)` to read its code slice and begin."
         }))?)
@@ -536,10 +665,14 @@ impl CorridorMcpEngine {
             .and_then(|v| v.as_u64())
             .ok_or_else(|| anyhow!("Missing gate_index"))? as usize;
 
+        let detail_level = args.get("detail_level").and_then(|v| v.as_str());
         let compact = args
             .get("compact")
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .unwrap_or(false)
+            || detail_level == Some("minimal");
+
+        let freshness = session.check_git_freshness();
 
         let gate = session.inspect_gate(gate_index)?;
         let abs_path = self.workspace_root.join(&gate.node.file_path);
@@ -547,8 +680,8 @@ impl CorridorMcpEngine {
         // Record frecency
         self.frecency.record_access(&gate.node.symbol_id);
 
-        if compact {
-            return Ok(serde_json::to_string_pretty(&json!({
+        let mut output = if compact {
+            json!({
                 "gate_index": gate.gate_index,
                 "status": gate.status,
                 "symbol_id": gate.node.symbol_id,
@@ -558,25 +691,36 @@ impl CorridorMcpEngine {
                 "upstream_contracts": gate.upstream_contracts,
                 "blast_radius": gate.blast_radius,
                 "mode": "compact_token_optimized"
-            }))?);
+            })
+        } else {
+            let full_text = fs::read_to_string(&abs_path).unwrap_or_default();
+            let code_slice =
+                TsAstSlicer::slice_lines(&full_text, gate.node.line_range.0, gate.node.line_range.1);
+
+            json!({
+                "gate_index": gate.gate_index,
+                "status": gate.status,
+                "symbol_id": gate.node.symbol_id,
+                "file_path": gate.node.file_path,
+                "line_range": gate.node.line_range,
+                "role": gate.node.role,
+                "upstream_contracts": gate.upstream_contracts,
+                "downstream_in_corridor": gate.downstream_in_corridor,
+                "blast_radius": gate.blast_radius,
+                "code_slice": code_slice
+            })
+        };
+
+        if freshness.is_stale {
+            output["git_freshness_warning"] = json!({
+                "is_stale": true,
+                "built_at_commit": freshness.built_at_commit,
+                "current_commit": freshness.current_commit,
+                "warning": "HEAD has moved since corridor was opened. Consider verifying or re-opening corridor."
+            });
         }
 
-        let full_text = fs::read_to_string(&abs_path).unwrap_or_default();
-        let code_slice =
-            TsAstSlicer::slice_lines(&full_text, gate.node.line_range.0, gate.node.line_range.1);
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "gate_index": gate.gate_index,
-            "status": gate.status,
-            "symbol_id": gate.node.symbol_id,
-            "file_path": gate.node.file_path,
-            "line_range": gate.node.line_range,
-            "role": gate.node.role,
-            "upstream_contracts": gate.upstream_contracts,
-            "downstream_in_corridor": gate.downstream_in_corridor,
-            "blast_radius": gate.blast_radius,
-            "code_slice": code_slice
-        }))?)
+        Ok(serde_json::to_string_pretty(&output)?)
     }
 
     fn tool_propose_edit(&mut self, args: &Value) -> Result<String> {
@@ -628,6 +772,8 @@ impl CorridorMcpEngine {
         let (original_content, file_existed_originally) =
             session.get_or_snapshot_file(gate_index, &rel_path);
 
+        let pre_contracts = TsAstSlicer::extract_exported_contracts(&abs_path, &original_content)
+            .unwrap_or_default();
         let pre_hash = TsAstSlicer::compute_file_contract_hash(&abs_path, &original_content)
             .unwrap_or_else(|_| "invalid_pre_ast".to_string());
 
@@ -641,8 +787,14 @@ impl CorridorMcpEngine {
         self.frecency.record_access(&rel_path);
         self.git_resolver.invalidate();
 
+        let post_contracts = TsAstSlicer::extract_exported_contracts(&abs_path, new_content)
+            .unwrap_or_default();
         let post_hash = TsAstSlicer::compute_file_contract_hash(&abs_path, new_content)
             .unwrap_or_else(|_| "syntax_error_post_ast".to_string());
+        let contract_diff = flowrail_core::contract::ContractHasher::diff_surfaces(
+            &pre_contracts,
+            &post_contracts,
+        );
 
         let diagnostics = TsGateVerifier::verify_gate_edit(
             &self.workspace_root,
@@ -665,14 +817,22 @@ impl CorridorMcpEngine {
         let state_file = self.workspace_root.join(".corridor/active_session.json");
         let _ = session.save_to_disk(&state_file);
 
+        let artifact = FlowrailArtifact::from_session(session, Some(&self.git_resolver));
+        let artifact_path = artifact.save_to_workspace(&self.workspace_root).ok();
+
         Ok(serde_json::to_string_pretty(&json!({
             "gate_index": gate_index,
             "file_path": rel_path,
             "contract_mutated": pre_hash != post_hash,
+            "contract_delta_kind": contract_diff.delta_kind,
+            "is_breaking": contract_diff.is_breaking,
+            "breaking_reasons": contract_diff.breaking_reasons,
             "pre_contract_hash": pre_hash,
             "post_contract_hash": post_hash,
             "diagnostics_clean": diagnostics.is_empty(),
             "diagnostics": diagnostics,
+            "artifact_id": artifact.artifact_id,
+            "artifact_file": artifact_path.map(|p| p.to_string_lossy().to_string()),
             "next_step": if diagnostics.is_empty() {
                 "Call `corridor_advance_gate` to lock this gate and unlock the next one."
             } else {
@@ -691,6 +851,9 @@ impl CorridorMcpEngine {
         let state_file = self.workspace_root.join(".corridor/active_session.json");
         let _ = session.save_to_disk(&state_file);
 
+        let artifact = FlowrailArtifact::from_session(session, Some(&self.git_resolver));
+        let artifact_path = artifact.save_to_workspace(&self.workspace_root).ok();
+
         let unlocked_gate_idx = session
             .plan
             .gates
@@ -707,7 +870,9 @@ impl CorridorMcpEngine {
 
         Ok(serde_json::to_string_pretty(&json!({
             "session_phase": new_phase,
-            "unlocked_gate": next_gate_detail
+            "unlocked_gate": next_gate_detail,
+            "artifact_id": artifact.artifact_id,
+            "artifact_file": artifact_path.map(|p| p.to_string_lossy().to_string())
         }))?)
     }
 
@@ -728,11 +893,67 @@ impl CorridorMcpEngine {
 
         self.git_resolver.invalidate();
 
+        let artifact = FlowrailArtifact::from_session(session, Some(&self.git_resolver));
+        let artifact_path = artifact.save_to_workspace(&self.workspace_root).ok();
+
         let reverted_paths: Vec<String> = reverted.into_iter().map(|(_, rel)| rel).collect();
         Ok(serde_json::to_string_pretty(&json!({
             "rolled_back_to_gate": to_gate,
             "reverted_files": reverted_paths,
-            "active_phase": session.phase
+            "active_phase": session.phase,
+            "artifact_id": artifact.artifact_id,
+            "artifact_file": artifact_path.map(|p| p.to_string_lossy().to_string())
+        }))?)
+    }
+
+    fn tool_export_artifact(&self, args: &Value) -> Result<String> {
+        let session = self.session.as_ref().ok_or_else(|| {
+            anyhow!("No active corridor session to export artifact. Call corridor_open first.")
+        })?;
+
+        let save_to_disk = args
+            .get("save_to_disk")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        let artifact = FlowrailArtifact::from_session(session, Some(&self.git_resolver));
+
+        let saved_file = if save_to_disk {
+            let p = artifact.save_to_workspace(&self.workspace_root)?;
+            Some(p.to_string_lossy().to_string())
+        } else {
+            None
+        };
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "artifact_id": artifact.artifact_id,
+            "saved_to_file": saved_file,
+            "clean_json_artifact": artifact
+        }))?)
+    }
+
+    fn tool_enrich_artifact(&mut self, args: &Value) -> Result<String> {
+        let session = self.session.as_ref().ok_or_else(|| {
+            anyhow!("No active corridor session to enrich. Call corridor_open first.")
+        })?;
+
+        let enrichment_val = args
+            .get("enrichment")
+            .ok_or_else(|| anyhow!("Missing required parameter 'enrichment'"))?;
+
+        let enrichment: AiEnrichment = serde_json::from_value(enrichment_val.clone())
+            .map_err(|e| anyhow!("Invalid AiEnrichment schema: {}", e))?;
+
+        let mut artifact = FlowrailArtifact::from_session(session, Some(&self.git_resolver));
+        artifact.apply_and_validate_enrichment(enrichment)?;
+
+        let saved_path = artifact.save_to_workspace(&self.workspace_root)?;
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "status": "ENRICHMENT_VERIFIED_AND_APPLIED",
+            "artifact_id": artifact.artifact_id,
+            "saved_to_file": saved_path.to_string_lossy().to_string(),
+            "clean_json_artifact": artifact
         }))?)
     }
 }

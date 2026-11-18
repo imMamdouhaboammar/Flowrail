@@ -1,4 +1,6 @@
-use flowrail_core::graph::{CodebaseGraph, EdgeKind, NodeRole, SemanticEdge, SemanticNode};
+use flowrail_core::graph::{
+    CodebaseGraph, EdgeConfidence, EdgeKind, NodeRole, SemanticEdge, SemanticNode,
+};
 use flowrail_core::pruning::{PruneEvaluator, PruningConfig};
 
 #[test]
@@ -62,6 +64,7 @@ fn test_contract_definition_never_pruned() {
                 kind: EdgeKind::ReferencesType,
                 call_site_line: 2,
                 is_dynamic_trace: false,
+                confidence: EdgeConfidence::Extracted,
             },
         );
     }
@@ -111,6 +114,7 @@ fn test_fan_in_utility_pruned() {
                 kind: EdgeKind::Calls,
                 call_site_line: 2,
                 is_dynamic_trace: false,
+                confidence: EdgeConfidence::Extracted,
             },
         );
     }

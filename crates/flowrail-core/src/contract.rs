@@ -17,12 +17,22 @@ pub enum ContractKind {
     ClassPublicSurface,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum ContractDeltaKind {
+    #[default]
+    Cosmetic,
+    CompatibleAdditive,
+    Breaking,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContractDiff {
     pub previous_hash: String,
     pub current_hash: String,
     pub is_mutated: bool,
     pub is_breaking: bool,
+    #[serde(default)]
+    pub delta_kind: ContractDeltaKind,
     pub breaking_reasons: Vec<String>,
     pub added_symbols: Vec<String>,
     pub removed_symbols: Vec<String>,
@@ -120,12 +130,20 @@ impl ContractHasher {
 
         let is_mutated = previous_hash != current_hash;
         let is_breaking = !breaking_reasons.is_empty();
+        let delta_kind = if !is_mutated {
+            ContractDeltaKind::Cosmetic
+        } else if is_breaking {
+            ContractDeltaKind::Breaking
+        } else {
+            ContractDeltaKind::CompatibleAdditive
+        };
 
         ContractDiff {
             previous_hash,
             current_hash,
             is_mutated,
             is_breaking,
+            delta_kind,
             breaking_reasons,
             added_symbols: added,
             removed_symbols: removed,

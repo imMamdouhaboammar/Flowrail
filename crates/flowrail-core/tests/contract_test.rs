@@ -1,4 +1,6 @@
-use flowrail_core::contract::{ContractHasher, ContractKind, ExportedSymbolContract};
+use flowrail_core::contract::{
+    ContractDeltaKind, ContractHasher, ContractKind, ExportedSymbolContract,
+};
 
 #[test]
 fn test_contract_hasher_whitespace_invariance() {
@@ -52,6 +54,7 @@ fn test_contract_hasher_diff_detection() {
         diff.is_breaking,
         "Adding required property is a breaking change"
     );
+    assert_eq!(diff.delta_kind, ContractDeltaKind::Breaking);
     assert_eq!(
         diff.modified_symbols,
         vec!["TaxCalculationResult".to_string()]
@@ -83,6 +86,7 @@ fn test_contract_compatible_optional_property() {
         !diff.is_breaking,
         "Adding optional property bio?: string is backward-compatible"
     );
+    assert_eq!(diff.delta_kind, ContractDeltaKind::CompatibleAdditive);
     assert!(diff.breaking_reasons.is_empty());
 }
 
@@ -139,4 +143,5 @@ fn test_diff_surfaces_punctuation_spacing_invariance() {
         "Formatting spacing around punctuation must not mark symbol as modified"
     );
     assert!(!diff.is_breaking);
+    assert_eq!(diff.delta_kind, ContractDeltaKind::Cosmetic);
 }

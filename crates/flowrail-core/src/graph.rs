@@ -23,6 +23,14 @@ pub enum EdgeKind {
     ReadsProperty,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum EdgeConfidence {
+    #[default]
+    Extracted,
+    Inferred,
+    Ambiguous,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SemanticNode {
     pub symbol_id: String,
@@ -42,6 +50,28 @@ pub struct SemanticEdge {
     pub call_site_line: usize,
     #[serde(alias = "is_runtime_dynamic")]
     pub is_dynamic_trace: bool,
+    #[serde(default)]
+    pub confidence: EdgeConfidence,
+}
+
+impl SemanticEdge {
+    pub fn new(kind: EdgeKind, call_site_line: usize) -> Self {
+        Self {
+            kind,
+            call_site_line,
+            is_dynamic_trace: false,
+            confidence: EdgeConfidence::Extracted,
+        }
+    }
+
+    pub fn dynamic(kind: EdgeKind, call_site_line: usize) -> Self {
+        Self {
+            kind,
+            call_site_line,
+            is_dynamic_trace: true,
+            confidence: EdgeConfidence::Ambiguous,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,5 +275,55 @@ impl CodebaseGraph {
                 target.role != NodeRole::UtilityNoise
             })
             .count()
+    }
+
+    /// Computes PageRank across the semantic graph to identify architectural hubs (Aider pattern).
+    /// Returns symbol_id -> normalized score in [0.0, 1.0].
+    pub fn compute_pagerank(&self, damping: f64, max_iters: usize) -> IndexMap<String, f64> {
+        let n = self.graph.node_count();
+        if n == 0 {
+            return IndexMap::new();
+        }
+
+        let n_f64 = n as f64;
+        let mut ranks: Vec<f64> = vec![1.0 / n_f64; n];
+        let mut next_ranks: Vec<f64> = vec![0.0; n];
+
+        let out_degrees: Vec<usize> = (0..n)
+            .map(|i| self.graph.edges_directed(NodeIndex::new(i), Direction::Outgoing).count())
+            .collect();
+
+        for _ in 0..max_iters.max(1) {
+            let mut dangling_sum = 0.0;
+            for i in 0..n {
+                if out_degrees[i] == 0 {
+                    dangling_sum += ranks[i];
+                }
+            }
+
+            let base = (1.0 - damping) / n_f64 + damping * (dangling_sum / n_f64);
+            next_ranks.fill(base);
+
+            for i in 0..n {
+                let out_deg = out_degrees[i];
+                if out_deg > 0 {
+                    let share = damping * ranks[i] / (out_deg as f64);
+                    for edge in self.graph.edges_directed(NodeIndex::new(i), Direction::Outgoing) {
+                        next_ranks[edge.target().index()] += share;
+                    }
+                }
+            }
+
+            std::mem::swap(&mut ranks, &mut next_ranks);
+        }
+
+        let max_val = ranks.iter().copied().fold(0.0_f64, f64::max);
+        let normalizer = if max_val > 0.0 { max_val } else { 1.0 };
+
+        let mut res = IndexMap::with_capacity(n);
+        for (i, node) in self.graph.node_weights().enumerate() {
+            res.insert(node.symbol_id.clone(), ranks[i] / normalizer);
+        }
+        res
     }
 }

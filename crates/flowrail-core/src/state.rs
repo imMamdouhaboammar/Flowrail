@@ -1,5 +1,5 @@
 use crate::graph::{NodeRole, SemanticNode};
-use crate::slicer::{BlastRadiusReport, BlastRiskLevel, CorridorGate, CorridorPlan, GateStatus};
+use crate::slicer::{BlastRadiusReport, CorridorGate, CorridorPlan, GateStatus};
 use anyhow::{Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -31,12 +31,21 @@ pub struct GateCheckpoint {
     pub diagnostics_clean: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitFreshness {
+    pub is_stale: bool,
+    pub built_at_commit: Option<String>,
+    pub current_commit: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorridorSession {
     pub workspace_root: PathBuf,
     pub plan: CorridorPlan,
     pub phase: SessionPhase,
     pub checkpoints: HashMap<usize, GateCheckpoint>,
+    #[serde(default)]
+    pub built_at_commit: Option<String>,
 }
 
 impl CorridorSession {
@@ -46,12 +55,27 @@ impl CorridorSession {
         } else {
             SessionPhase::ActiveGate(0)
         };
+        let built_at_commit = crate::git::GitStatusResolver::get_head_commit(&workspace_root);
 
         Self {
             workspace_root,
             plan,
             phase,
             checkpoints: HashMap::new(),
+            built_at_commit,
+        }
+    }
+
+    pub fn check_git_freshness(&self) -> GitFreshness {
+        let current_commit = crate::git::GitStatusResolver::get_head_commit(&self.workspace_root);
+        let is_stale = match (&self.built_at_commit, &current_commit) {
+            (Some(built), Some(current)) => built != current,
+            _ => false,
+        };
+        GitFreshness {
+            is_stale,
+            built_at_commit: self.built_at_commit.clone(),
+            current_commit,
         }
     }
 
@@ -257,11 +281,7 @@ impl CorridorSession {
                             },
                             upstream_contracts: vec![self.plan.gates[idx].node.symbol_id.clone()],
                             downstream_in_corridor: Vec::new(),
-                            blast_radius: BlastRadiusReport {
-                                contagion_index: 0,
-                                risk_level: BlastRiskLevel::SafeInternal,
-                                external_dependents: Vec::new(),
-                            },
+                            blast_radius: BlastRadiusReport::safe_internal(),
                         });
                     }
                 }

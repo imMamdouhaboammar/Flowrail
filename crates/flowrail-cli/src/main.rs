@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use flowrail_core::artifact::FlowrailArtifact;
 use flowrail_core::frecency::FrecencyStore;
 use flowrail_core::git::GitStatusResolver;
 use flowrail_core::grep::CorridorGrep;
@@ -15,7 +16,7 @@ use std::process::Command;
 #[derive(Parser)]
 #[command(
     name = "flowrail",
-    version = "0.1.0",
+    version,
     about = "Flowrail (Project Ariadne): Deterministic Execution & Mutation State-Machine for AI Coding Agents"
 )]
 struct Cli {
@@ -58,6 +59,15 @@ enum Commands {
         intent: String,
         #[arg(short, long)]
         target: Option<String>,
+        #[arg(long)]
+        max_depth: Option<usize>,
+        #[arg(long, default_value_t = false)]
+        artifact: bool,
+    },
+    /// Inspect, generate, and validate Clean/Clear JSON artifacts
+    Artifact {
+        #[command(subcommand)]
+        action: ArtifactCommands,
     },
     /// Starts the Stateful MCP Server over stdio for Claude Code / Cursor / Windsurf
     Mcp {
@@ -75,6 +85,37 @@ enum Commands {
     },
     /// Runs a self-contained live demonstration on sample TypeScript fixtures
     Demo,
+}
+
+#[derive(Subcommand)]
+enum ArtifactCommands {
+    /// Shows the latest or specified artifact JSON
+    Show {
+        #[arg(long)]
+        id: Option<String>,
+        #[arg(long, default_value_t = false)]
+        raw: bool,
+    },
+    /// Lists all generated artifacts in .flowrail/artifacts/
+    List,
+    /// Slices a corridor and exports a Clean/Clear JSON artifact
+    Generate {
+        #[arg(short, long)]
+        entry: String,
+        #[arg(short, long, default_value = "READ_FLOW")]
+        intent: String,
+        #[arg(short, long)]
+        target: Option<String>,
+        #[arg(long)]
+        max_depth: Option<usize>,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Validates an artifact and its AI enrichment against ADHD & Anti-Slop gates
+    Validate {
+        #[arg(short, long)]
+        file: PathBuf,
+    },
 }
 
 fn load_graph(workspace: &std::path::Path) -> Result<flowrail_core::graph::CodebaseGraph> {
@@ -136,15 +177,20 @@ fn main() -> Result<()> {
             let engine = FuzzySearchEngine::new(&graph, Some(&git_resolver), Some(&frecency));
 
             let hits = engine.search(&query, definitions_only, git_only, max_results);
+            let pagerank = graph.compute_pagerank(0.85, 20);
+
             println!("Found {} symbols matching '{}':", hits.len(), query);
             for h in hits {
+                let pr = pagerank.get(&h.symbol_id).copied().unwrap_or(0.0);
+                let score = h.score + (pr * 50.0);
                 println!(
-                    "  [{:?}] {:45} {:30} {} (score: {:.1})",
+                    "  [{:?}] {:45} {:30} {} (score: {:.1}, pagerank: {:.4})",
                     h.role,
                     h.display_name,
                     format!("{}:{}-{}", h.file_path, h.line_range.0, h.line_range.1),
                     h.git_status.badge(),
-                    h.score
+                    score,
+                    pr
                 );
             }
         }
@@ -175,6 +221,8 @@ fn main() -> Result<()> {
             entry,
             intent,
             target,
+            max_depth,
+            artifact,
         } => {
             let graph = load_graph(&workspace)?;
             let slice_intent = if intent.eq_ignore_ascii_case("MUTATE_CONTRACT")
@@ -185,15 +233,181 @@ fn main() -> Result<()> {
             } else {
                 SliceIntent::ReadFlow
             };
+            let mut pruning_config = PruningConfig::default();
+            if let Some(md) = max_depth {
+                pruning_config.max_corridor_depth = md.clamp(1, 100);
+            }
             let plan = CorridorSlicer::build_corridor(
                 &graph,
                 &entry,
                 slice_intent,
                 target.as_deref(),
-                &PruningConfig::default(),
+                &pruning_config,
             )?;
-            println!("{}", serde_json::to_string_pretty(&plan)?);
+
+            let git_resolver = GitStatusResolver::new(workspace.clone());
+            let art = FlowrailArtifact::from_plan(&plan, &workspace, Some(&git_resolver));
+            let _ = art.save_to_workspace(&workspace);
+
+            if artifact {
+                println!("{}", art.to_clean_json()?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&plan)?);
+            }
         }
+        Commands::Artifact { action } => match action {
+            ArtifactCommands::Show { id, raw: _ } => {
+                let artifacts_dir = workspace.join(".flowrail/artifacts");
+                let file_path = if let Some(art_id) = id {
+                    let direct = artifacts_dir.join(format!("{}.json", art_id));
+                    if direct.exists() {
+                        direct
+                    } else {
+                        artifacts_dir.join(art_id)
+                    }
+                } else {
+                    artifacts_dir.join("latest.json")
+                };
+
+                if !file_path.exists() {
+                    anyhow::bail!(
+                        "Artifact not found at {}. Run `flowrail slice --artifact` or `flowrail doctor` first.",
+                        file_path.display()
+                    );
+                }
+
+                let content = std::fs::read_to_string(&file_path)?;
+                println!("{}", content);
+            }
+            ArtifactCommands::List => {
+                let artifacts_dir = workspace.join(".flowrail/artifacts");
+                if !artifacts_dir.exists() {
+                    println!(
+                        "No artifacts directory found at {}",
+                        artifacts_dir.display()
+                    );
+                    return Ok(());
+                }
+
+                println!("=== Flowrail Generated Artifacts ===");
+                println!("Location: {}\n", artifacts_dir.display());
+
+                let mut entries: Vec<_> = std::fs::read_dir(&artifacts_dir)?
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
+                    .collect();
+                entries.sort_by_key(|e| e.file_name());
+
+                for entry in entries {
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    if let Ok(art) = std::fs::read_to_string(entry.path()).and_then(|c| {
+                        serde_json::from_str::<FlowrailArtifact>(&c)
+                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+                    }) {
+                        println!(
+                            "  • {:24} [{:?}] {} (Gates: {}, Contagion: {})",
+                            file_name,
+                            art.kind,
+                            art.formatted_utc,
+                            art.deterministic.total_gates,
+                            art.deterministic.blast_summary.contagion_index
+                        );
+                        println!(
+                            "    -> Headline: {}",
+                            art.ai_enrichment.adhd_view.headline_action
+                        );
+                        println!(
+                            "    -> Next Action: {}\n",
+                            art.ai_enrichment.adhd_view.terminal_action
+                        );
+                        continue;
+                    }
+                    println!("  • {}", file_name);
+                }
+            }
+            ArtifactCommands::Generate {
+                entry,
+                intent,
+                target,
+                max_depth,
+                output,
+            } => {
+                let graph = load_graph(&workspace)?;
+                let slice_intent = if intent.eq_ignore_ascii_case("MUTATE_CONTRACT")
+                    || intent.eq_ignore_ascii_case("mutate")
+                    || intent.eq_ignore_ascii_case("mutatecontract")
+                {
+                    SliceIntent::MutateContract
+                } else {
+                    SliceIntent::ReadFlow
+                };
+                let mut pruning_config = PruningConfig::default();
+                if let Some(md) = max_depth {
+                    pruning_config.max_corridor_depth = md.clamp(1, 100);
+                }
+                let plan = CorridorSlicer::build_corridor(
+                    &graph,
+                    &entry,
+                    slice_intent,
+                    target.as_deref(),
+                    &pruning_config,
+                )?;
+
+                let git_resolver = GitStatusResolver::new(workspace.clone());
+                let artifact = FlowrailArtifact::from_plan(&plan, &workspace, Some(&git_resolver));
+
+                if let Some(out_path) = output {
+                    if let Some(parent) = out_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::write(&out_path, artifact.to_clean_json()?)?;
+                    println!("Artifact saved to {}", out_path.display());
+                } else {
+                    let saved_p = artifact.save_to_workspace(&workspace)?;
+                    println!("Artifact saved to {}", saved_p.display());
+                }
+
+                println!("{}", artifact.to_clean_json()?);
+            }
+            ArtifactCommands::Validate { file } => {
+                if !file.exists() {
+                    anyhow::bail!("Artifact file not found at {}", file.display());
+                }
+
+                let content = std::fs::read_to_string(&file)?;
+                let mut artifact: FlowrailArtifact = serde_json::from_str(&content)
+                    .context("Failed to parse file into FlowrailArtifact schema")?;
+
+                println!("Validating artifact '{}'...", artifact.artifact_id);
+                println!("  • Schema Version: {}", artifact.schema_version);
+                println!("  • Kind: {:?}", artifact.kind);
+                println!("  • Gates: {}", artifact.deterministic.total_gates);
+                println!(
+                    "  • Contagion Index: {}",
+                    artifact.deterministic.blast_summary.contagion_index
+                );
+
+                let enrichment = artifact.ai_enrichment.clone();
+                match artifact.apply_and_validate_enrichment(enrichment) {
+                    Ok(()) => {
+                        println!("\n[OK] Validation PASSED!");
+                        println!(
+                            "  - Zero Hallucination: All cited symbols & files verified against deterministic graph."
+                        );
+                        println!(
+                            "  - ADHD Constraints: Headline action, terminal action, <=5 bounded steps verified."
+                        );
+                        println!(
+                            "  - Anti-Slop Discipline: Zero conversational fluff detected. Direct payload verified."
+                        );
+                    }
+                    Err(err) => {
+                        println!("\n[FAIL] Validation REJECTED: {}", err);
+                        std::process::exit(1);
+                    }
+                }
+            }
+        },
         Commands::Mcp { full_typecheck } => {
             let graph = load_graph(&workspace)?;
             let engine = CorridorMcpEngine::new(workspace, graph, full_typecheck);
@@ -218,6 +432,14 @@ fn main() -> Result<()> {
                 .filter(|s| **s == flowrail_core::git::GitFileStatus::Untracked)
                 .count();
 
+            let art = FlowrailArtifact::from_doctor(
+                &workspace,
+                graph.node_count(),
+                graph.edge_count(),
+                Some(&git_resolver),
+            );
+            let saved_path = art.save_to_workspace(&workspace).ok();
+
             println!("=== Flowrail System Doctor (Ariadne + FFF Architecture) ===");
             println!("Workspace: {}", workspace.display());
             println!("Total Semantic Nodes: {}", graph.node_count());
@@ -228,6 +450,9 @@ fn main() -> Result<()> {
             );
             println!("Fuzzy Search & Frecency Engine: Ready");
             println!("Corridor-Scoped Grep: Ready");
+            if let Some(p) = saved_path {
+                println!("Audit Artifact Saved: {}", p.display());
+            }
             println!("Health: All systems operational.");
         }
         Commands::Init { target, force } => {
@@ -398,6 +623,28 @@ fn main() -> Result<()> {
                 Some(&git_resolver),
             )?;
             println!("{}", CorridorGrep::format_report_compact(&grep_report));
+
+            println!("\n6. Generating Clean/Clear JSON Artifact (ADHD + Anti-Slop Enriched)...");
+            let demo_artifact =
+                FlowrailArtifact::from_plan(&mutate_plan, &fixture_dir, Some(&git_resolver));
+            let demo_art_path = demo_artifact.save_to_workspace(&fixture_dir)?;
+            println!(
+                "   -> Clean JSON Artifact Saved: {}",
+                demo_art_path.display()
+            );
+            println!("   -> Artifact ID: {}", demo_artifact.artifact_id);
+            println!(
+                "   -> Headline Action: {}",
+                demo_artifact.ai_enrichment.adhd_view.headline_action
+            );
+            println!(
+                "   -> State Anchor: {}",
+                demo_artifact.ai_enrichment.adhd_view.state_anchor
+            );
+            println!(
+                "   -> Next Action: {}",
+                demo_artifact.ai_enrichment.adhd_view.terminal_action
+            );
 
             println!("\n=== Flowrail Demo Completed Successfully ===");
         }
