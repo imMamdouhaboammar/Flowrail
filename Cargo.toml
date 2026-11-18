@@ -47,7 +47,7 @@ scip = "0.4"
 protobuf = "=3.2.0"
 
 # State Persistence & Git Checkpoints
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.42", features = ["bundled"] }
 git2 = "0.19"
 blake3 = "1.5"
 regex = "1.10"
