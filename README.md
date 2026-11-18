@@ -2,40 +2,82 @@
 
 **Experimental Preview · TypeScript · MIT**
 
-Flowrail is a local tool for exploring TypeScript code and planning changes to shared types. It is built in Rust, and the analysis runs without a model API.
+Flowrail is a local Rust tool that gives an AI coding agent a focused view of a TypeScript codebase before it reads or changes code. The analysis runs without a model API.
 
-## Why I’m building it
+## The problem it solves
 
-Add municipal tax at checkout. The coding agent finds the controller, changes the tax result, and gets checkout working. Then the compiler points to an invoice generator, a subscription renewal worker, and a VAT report. All three used the same result. They were easy to miss while the agent was reading checkout.
+Add municipal tax at checkout. The agent finds the controller, changes the tax result, and gets checkout working. Then the compiler points to an invoice generator, a subscription renewal worker, and a VAT report. All three used the same result. They were easy to miss while the agent was following the checkout flow.
 
-That’s the problem I want Flowrail to help with. When I’m reading a feature, I start where the request comes in and follow the work to where it’s saved or returned. When I’m changing a shared type, I start at the type. I want to see who produces it, who stores it, and who reads it in another part of the repo.
+Flowrail produces two views from source code and a TypeScript semantic index:
 
-Flowrail calls those two views a **read corridor** and a **mutation plan**. The first gives the agent a focused view of the feature. The second is meant to show which changes depend on others and which consumers need a closer look. The agent still writes the patch. A reference tells us who might be affected. Compiler diagnostics and tests tell us what actually broke.
+- **Read corridor.** Start at a controller or handler. Follow the execution path to where data is saved or returned. Skip logging and utilities. Surface the rounding helper that actually affects what a customer pays.
+- **Mutation plan.** Start at the type being changed. Walk backward through its producer, the records that store it, and the consumers in other features. Order those steps so a producer is verified before its callers are touched. Report cross-feature consumers before the first file is edited.
 
-## Quickstart (1-Command Install & Demo)
+The agent still writes the patch. Flowrail controls what the agent sees and when, so it cannot modify Gate 2 before Gate 1 compiles.
 
-### 1. Try Live Demonstration Immediately
+---
+
+## When to use it
+
+| Situation | What Flowrail does |
+| --- | --- |
+| You are changing a shared `interface` or `type` and do not know all its consumers | Builds a mutation plan ordered from the type outward; reports every file that imports it, inside and outside the active feature |
+| An agent is making a multi-file refactor and you have seen it break intermediate states before | Locks future files until the current file passes syntax verification; rolls back to a named checkpoint on failure |
+| You are reading an unfamiliar feature and want only the code that matters to the business logic | Slices a read corridor from the entry point; prunes loggers, telemetry, and high-fan-in utilities automatically |
+| You need to know the blast radius of a type change before touching anything | Runs `flowrail_open` with `intent: MUTATE_CONTRACT`; returns a contagion index and a list of external callers before any edit is proposed |
+| An agent completed a refactor and you want to verify no caller was silently skipped | Session state records which gates were verified and which repairs were acknowledged |
+
+Flowrail is **not** useful for single-file edits, bug fixes that do not touch shared contracts, or projects not written in TypeScript.
+
+---
+
+## Install
+
+### Option A — one command from the repository
+
 ```bash
-./quickstart.sh
-# Or using the driver:
-./bin/flowrail demo
+./install.sh
 ```
 
-### 2. Install Flowrail Globally
-```bash
-# Automated installer (builds release binary and links to PATH)
-./install.sh
+Builds a release binary with Cargo and links it to `~/.cargo/bin/flowrail`. Requires Rust 1.75 or later. The script installs Rust via `rustup` if it is not found.
 
-# Or via Cargo directly:
+### Option B — Cargo directly
+
+```bash
 cargo install --path crates/flowrail-cli --force
 ```
 
-### 3. Initialize MCP for Cursor / Claude Code / Windsurf
-In any TypeScript workspace, run:
+### Option C — remote install (no local clone required)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/main/install.sh | bash
+```
+
+Verify the install:
+
+```bash
+flowrail doctor
+```
+
+---
+
+## Initialize a project
+
+Run once inside any TypeScript workspace:
+
 ```bash
 flowrail init
 ```
-This automatically configures `.cursor/mcp.json`, `.claude/mcp.json`, and `.flowrail/mcp.json`:
+
+This creates three files:
+
+| File | Used by |
+| --- | --- |
+| `.flowrail/mcp.json` | Flowrail internal config |
+| `.cursor/mcp.json` | Cursor |
+| `.mcp.json` | Claude Code, Windsurf, and any MCP-compatible client |
+
+All three contain:
 
 ```json
 {
@@ -48,21 +90,93 @@ This automatically configures `.cursor/mcp.json`, `.claude/mcp.json`, and `.flow
 }
 ```
 
-### 4. Agent Skill & OmniSkill Package
-Flowrail ships with a certified, zero-slop Agent Skill verified by OmniSkill (`omni-skill validate` 10/10 clean score):
-- **Skill Path:** [`.agents/skills/flowrail/SKILL.md`](.agents/skills/flowrail/SKILL.md)
-- **Global Alias:** `~/.agents/skills/flowrail/SKILL.md`
+After `init`, restart your editor. Flowrail's eight MCP tools become available to any agent running in that workspace.
 
-Agents automatically use Flowrail's 8 stateful MCP tools (`flowrail_discover_entrypoints`, `flowrail_find_symbols`, `flowrail_grep`, `flowrail_open`, `flowrail_inspect_gate`, `flowrail_propose_edit`, `flowrail_advance_gate`, `flowrail_abort_or_rollback`) to enforce:
-1. **Sequential Visibility Locks:** Future gates hidden until the active file passes verification (syntax verification via Tier 1 OXC parser by default; full TypeScript type-checking when `--full-typecheck` is enabled).
-2. **Body-Agnostic BLAKE3 Contract Hashing:** Immunity to internal whitespace and body edits; triggers only on signature changes.
-3. **Contagion Barrier:** Mandatory acknowledgment of cross-module blast radius before advancement.
+To apply to every project without running `init` per repo, add the global config to your editor's user MCP settings pointing `--workspace` at `${workspaceFolder}`.
+
+---
+
+## CLI reference
+
+```bash
+flowrail demo                      # Run the built-in ecommerce fixture end-to-end
+flowrail doctor                    # Verify the semantic graph, AST engine, and Git cache
+flowrail search "checkout"         # Fuzzy symbol search with Git status and frecency ranking
+flowrail grep "TaxResult"          # In-memory grep, corridor-scoped or workspace-wide
+flowrail slice -e "<symbol>"       # Print a JSON corridor plan to stdout
+flowrail mcp                       # Start the stdio MCP server (used by editors automatically)
+```
+
+---
+
+## MCP tools
+
+The MCP server speaks JSON-RPC 2.0 over stdio. Both `flowrail_*` and `corridor_*` prefixes are accepted.
+
+| Tool | What it does |
+| --- | --- |
+| `flowrail_discover_entrypoints` | Fuzzy search for HTTP controllers, CLI handlers, and queue consumers with Git status badges |
+| `flowrail_find_symbols` | Typo-tolerant symbol search across all AST nodes |
+| `flowrail_grep` | In-memory grep; `scope: "corridor"` restricts results to files in the active session |
+| `flowrail_open` | Opens a session with `READ_FLOW` or `MUTATE_CONTRACT` intent; unlocks Gate 0 |
+| `flowrail_inspect_gate` | Returns the source slice and blast radius report for the unlocked gate |
+| `flowrail_propose_edit` | Applies a proposed file content, checks syntax with OXC, hashes exported contracts |
+| `flowrail_advance_gate` | Verifies the active gate, locks it, and unlocks Gate N+1 |
+| `flowrail_abort_or_rollback` | Reverts files to any prior gate checkpoint |
+
+Full tool contracts: [`.agents/skills/flowrail/SKILL.md`](.agents/skills/flowrail/SKILL.md)
+
+---
+
+## Agent skill
+
+The skill file at `.agents/skills/flowrail/SKILL.md` tells an agent when to invoke Flowrail and how to follow the six-step refactoring protocol. Copy it to your global skills directory so agents pick it up without project-specific configuration:
+
+```bash
+mkdir -p ~/.agents/skills/flowrail
+cp .agents/skills/flowrail/SKILL.md ~/.agents/skills/flowrail/SKILL.md
+```
+
+---
+
+## Agent setup prompt
+
+Paste this into any AI coding agent to have it install Flowrail, initialize it in the current project, and register the skill — using the latest published version.
+
+```
+You are setting up Flowrail in this project. Follow these steps exactly.
+
+1. Check whether the `flowrail` binary is on PATH:
+   - Run: `flowrail --version`
+   - If not found, install it:
+     curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/main/install.sh | bash
+     Then verify: `flowrail doctor`
+
+2. Initialize Flowrail in this workspace:
+   - Run: `flowrail init`
+   - Confirm that `.flowrail/mcp.json`, `.cursor/mcp.json`, and `.mcp.json` were created.
+
+3. Install the agent skill globally:
+   - Run:
+     mkdir -p ~/.agents/skills/flowrail
+     curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/main/.agents/skills/flowrail/SKILL.md \
+       -o ~/.agents/skills/flowrail/SKILL.md
+   - Confirm the file exists at `~/.agents/skills/flowrail/SKILL.md`.
+
+4. Run the built-in demo to confirm everything works:
+   - Run: `flowrail demo`
+   - Expected: the demo prints a read corridor and a mutation plan with contagion warnings
+     for the sample fixture. No errors.
+
+5. Report back:
+   - The output of `flowrail doctor`
+   - Which MCP config files were created and their paths
+   - The last line of `flowrail demo` output
+```
 
 ---
 
 ## Try the preview
-
-Use Rust 1.99.1, the toolchain used in CI. From the repository root:
 
 ```sh
 cargo test --workspace --locked
@@ -72,17 +186,17 @@ cargo run --locked -p flowrail-cli -- \
   --intent READ_FLOW
 ```
 
-This command returns a JSON plan from the small fixture using the AST fallback. The TypeScript bridge also ingests SCIP indexes and uses OXC to parse declarations. The real SCIP-backed flow and dependency ordering are still being validated. Use generated plans as leads to check against the source and compiler. Run experiments with MCP edits on a disposable copy of the workspace.
+The command returns a JSON corridor plan from the sample fixture using the AST fallback. The [ecommerce benchmark](docs/Flowrail-Full-Specs/05-ecommerce-benchmark.md) describes the known results: adding an optional field typechecks cleanly; splitting `taxAmountCents` into two required fields produces four diagnostics across invoicing, renewals, and reporting.
 
-The larger [ecommerce benchmark](docs/Flowrail-Full-Specs/05-ecommerce-benchmark.md) gives us something concrete to check. Checkout compiles with its original type and with an added optional field. Splitting `taxAmountCents` into two required fields produces four TypeScript diagnostics across invoices, renewals, and reporting. You can reproduce those results and generate a real SCIP index with the [fixture commands](docs/Flowrail-Full-Specs/fixtures/ecommerce-trap/README.md).
+---
 
 ## Where to look next
 
-| Path | What’s there |
+| Path | What's there |
 | --- | --- |
-| [Story.md](Story.md) | Why I started Flowrail and where I’d use it |
+| [Story.md](Story.md) | Why I started Flowrail and where I'd use it |
 | [Full specifications](docs/Flowrail-Full-Specs/README.md) | Product scope, architecture, tool contracts, and acceptance tests |
-| [Viability and release criteria](docs/Flowrail-Full-Specs/10-viability-and-release.md) | What we’ve observed, what still needs proof, and how we’ll judge the MVP |
+| [Viability and release criteria](docs/Flowrail-Full-Specs/10-viability-and-release.md) | What we've observed, what still needs proof, and how we'll judge the MVP |
 | [`flowrail-core`](crates/flowrail-core/) | Dependency graph, slicing, contract comparison, and session state |
 | [`flowrail-ts-bridge`](crates/flowrail-ts-bridge/) | TypeScript analysis with SCIP and OXC |
 | [`flowrail-cli`](crates/flowrail-cli/) and [`flowrail-mcp`](crates/flowrail-mcp/) | Command-line and stdio MCP interfaces |
