@@ -39,7 +39,7 @@ indexmap = { version = "2.6", features = ["serde"] }
 oxc_allocator = "0.38"
 oxc_parser = "0.38"
 oxc_ast = "0.38"
-oxc_span = "0.38"
+oxc_span = "0.158"
 oxc_semantic = "0.38"
 
 # SCIP Protobuf Ingestion (Cross-file Type Resolution)
