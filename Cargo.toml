@@ -43,7 +43,7 @@ oxc_span = "0.38"
 oxc_semantic = "0.38"
 
 # SCIP Protobuf Ingestion (Cross-file Type Resolution)
-scip = "0.4"
+scip = "0.5"
 protobuf = "=3.2.0"
 
 # State Persistence & Git Checkpoints
