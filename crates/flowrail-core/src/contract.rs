@@ -32,8 +32,23 @@ pub struct ContractDiff {
 pub struct ContractHasher;
 
 impl ContractHasher {
-    /// Normalizes whitespace from extracted TypeScript signature strings
-    /// and computes a deterministic BLAKE3 hash.
+    /// Normalizes whitespace and structural punctuation from extracted TypeScript signature strings
+    /// ensuring formatting-invariant token comparison and a deterministic BLAKE3 hash.
+    pub fn normalize_signature_tokens(sig: &str) -> String {
+        let mut spaced = String::with_capacity(sig.len() * 2);
+        for c in sig.chars() {
+            if matches!(c, '{' | '}' | '(' | ')' | ':' | ';' | ',') {
+                spaced.push(' ');
+                spaced.push(c);
+                spaced.push(' ');
+            } else {
+                spaced.push(c);
+            }
+        }
+        spaced.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// Computes a deterministic BLAKE3 hash over sorted normalized symbol contracts.
     pub fn hash_normalized_surface(contracts: &[ExportedSymbolContract]) -> String {
         let mut hasher = blake3::Hasher::new();
         let mut sorted: Vec<&ExportedSymbolContract> = contracts.iter().collect();
@@ -42,11 +57,7 @@ impl ContractHasher {
         for item in sorted {
             hasher.update(item.symbol_name.as_bytes());
             hasher.update(b":");
-            let compact: String = item
-                .normalized_signature
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
+            let compact = Self::normalize_signature_tokens(&item.normalized_signature);
             hasher.update(compact.as_bytes());
             hasher.update(b";");
         }
