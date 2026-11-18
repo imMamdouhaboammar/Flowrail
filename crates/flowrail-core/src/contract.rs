@@ -64,6 +64,18 @@ impl ContractHasher {
         hasher.finalize().to_hex().to_string()
     }
 
+    fn index_surface_contracts(
+        contracts: &[ExportedSymbolContract],
+    ) -> HashMap<&String, (String, ContractKind)> {
+        contracts
+            .iter()
+            .map(|c| {
+                let compact = Self::normalize_signature_tokens(&c.normalized_signature);
+                (&c.symbol_name, (compact, c.kind))
+            })
+            .collect()
+    }
+
     pub fn diff_surfaces(
         before: &[ExportedSymbolContract],
         after: &[ExportedSymbolContract],
@@ -76,29 +88,8 @@ impl ContractHasher {
         let mut modified = Vec::new();
         let mut breaking_reasons = Vec::new();
 
-        let before_map: HashMap<_, _> = before
-            .iter()
-            .map(|c| {
-                let compact = c
-                    .normalized_signature
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                (&c.symbol_name, (compact, c.kind))
-            })
-            .collect();
-
-        let after_map: HashMap<_, _> = after
-            .iter()
-            .map(|c| {
-                let compact = c
-                    .normalized_signature
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                (&c.symbol_name, (compact, c.kind))
-            })
-            .collect();
+        let before_map = Self::index_surface_contracts(before);
+        let after_map = Self::index_surface_contracts(after);
 
         for (name, (sig_b, kind_b)) in &before_map {
             if let Some((sig_a, kind_a)) = after_map.get(name) {

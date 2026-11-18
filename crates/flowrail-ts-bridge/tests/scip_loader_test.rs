@@ -50,3 +50,43 @@ export class CheckoutController {
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn test_update_file_in_graph_removes_deleted_symbols() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("flowrail_update_test_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(temp_dir.join("src")).unwrap();
+
+    let file_path = temp_dir.join("src/service.ts");
+    let code_v1 = r#"
+export function calculateA(): number { return 1; }
+export function calculateB(): number { return 2; }
+"#;
+    fs::write(&file_path, code_v1).unwrap();
+
+    let mut graph = ScipGraphBuilder::build_from_directory(&temp_dir).unwrap();
+    assert!(graph.get_node_by_symbol("src/service.ts#calculateA").is_some());
+    assert!(graph.get_node_by_symbol("src/service.ts#calculateB").is_some());
+
+    // Version 2: calculateB is deleted, calculateC is added
+    let code_v2 = r#"
+export function calculateA(): number { return 10; }
+export function calculateC(): number { return 30; }
+"#;
+    fs::write(&file_path, code_v2).unwrap();
+
+    ScipGraphBuilder::update_file_in_graph(&mut graph, &temp_dir, &file_path).unwrap();
+
+    // calculateA must still exist
+    assert!(graph.get_node_by_symbol("src/service.ts#calculateA").is_some());
+    // calculateC must now exist
+    assert!(graph.get_node_by_symbol("src/service.ts#calculateC").is_some());
+    // calculateB must have been pruned!
+    assert!(
+        graph.get_node_by_symbol("src/service.ts#calculateB").is_none(),
+        "Deleted symbol must be pruned from graph on incremental file update"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

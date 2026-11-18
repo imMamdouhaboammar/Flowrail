@@ -346,7 +346,11 @@ impl TsConfigResolver {
         }
 
         // 2. Subpath package export match (e.g. @ecommerce/core/tax)
-        for (pkg_name, pkg) in &self.packages {
+        let mut pkg_names: Vec<&String> = self.packages.keys().collect();
+        pkg_names.sort_by_key(|k| std::cmp::Reverse(k.len()));
+
+        for pkg_name in pkg_names {
+            let pkg = &self.packages[pkg_name];
             if clean_spec.starts_with(pkg_name) {
                 let remainder = &clean_spec[pkg_name.len()..];
                 if let Some(subpath) = remainder.strip_prefix('/') {
@@ -409,10 +413,14 @@ impl TsConfigResolver {
             return None;
         }
 
-        // Case 1: Relative imports (starts with '.' or '/')
+        // Case 1: Relative or root-relative imports (starts with '.' or '/')
         if clean.starts_with('.') || clean.starts_with('/') {
-            let parent_dir = importing_file.parent().unwrap_or(Path::new(""));
-            let candidate_abs = workspace_root.join(parent_dir).join(&clean);
+            let candidate_abs = if let Some(stripped) = clean.strip_prefix('/') {
+                workspace_root.join(stripped)
+            } else {
+                let parent_dir = importing_file.parent().unwrap_or(Path::new(""));
+                workspace_root.join(parent_dir).join(&clean)
+            };
             if let Some(resolved) = Self::probe_extensions(&candidate_abs)
                 && let Ok(rel) = resolved.strip_prefix(workspace_root)
             {

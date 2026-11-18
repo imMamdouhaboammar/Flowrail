@@ -122,3 +122,29 @@ fn test_fan_in_utility_pruned() {
         "High fan-in node with 0 domain out-degree and no state mutation must be pruned"
     );
 }
+
+#[test]
+fn test_target_symbol_short_name_never_pruned() {
+    let mut graph = CodebaseGraph::new();
+    let target_node = SemanticNode {
+        symbol_id: "src/utils/logger.ts#Logger.log".to_string(),
+        display_name: "Logger.log".to_string(),
+        file_path: "src/utils/logger.ts".to_string(),
+        byte_range: (0, 100),
+        line_range: (1, 10),
+        role: NodeRole::UtilityNoise,
+        signature_hash: "hash_log".to_string(),
+        mutates_domain_state: false,
+        is_exported: true,
+    };
+    let idx = graph.add_node(target_node);
+    let config = PruningConfig::default();
+
+    // Even though it matches ignored prefix src/utils/logger, passing short name "Logger.log" as target protects it
+    let record = PruneEvaluator::evaluate(idx, &graph, &config, Some("Logger.log"));
+    assert!(
+        !record.should_prune,
+        "Target symbol with short display_name must NEVER be pruned"
+    );
+    assert_eq!(record.reason, "Protected: Target Symbol");
+}

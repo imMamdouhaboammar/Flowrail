@@ -48,3 +48,55 @@ export class OrderService {
     let hash1 = TsAstSlicer::compute_file_contract_hash(path, ts_code).unwrap();
     assert!(!hash1.is_empty());
 }
+
+#[test]
+fn test_class_public_surface_mutation_detection() {
+    let ts_before = r#"
+export class TaxCalculator {
+    calculate(amount: number): number {
+        return amount * 0.2;
+    }
+}
+"#;
+    let ts_after_body_change_only = r#"
+export class TaxCalculator {
+    calculate(amount: number): number {
+        // internal optimization
+        const rate = 0.2;
+        return amount * rate;
+    }
+}
+"#;
+    let ts_after_method_added = r#"
+export class TaxCalculator {
+    calculate(amount: number): number {
+        return amount * 0.2;
+    }
+    applyDiscount(amount: number, discount: number): number {
+        return amount - discount;
+    }
+}
+"#;
+
+    let path = Path::new("test.ts");
+    let contracts_before = TsAstSlicer::extract_exported_contracts(path, ts_before).unwrap();
+    let contracts_body =
+        TsAstSlicer::extract_exported_contracts(path, ts_after_body_change_only).unwrap();
+    let contracts_added =
+        TsAstSlicer::extract_exported_contracts(path, ts_after_method_added).unwrap();
+
+    let diff_body =
+        flowrail_core::contract::ContractHasher::diff_surfaces(&contracts_before, &contracts_body);
+    assert!(
+        !diff_body.is_mutated,
+        "Method body edit should NOT mutate class public surface"
+    );
+
+    let diff_added =
+        flowrail_core::contract::ContractHasher::diff_surfaces(&contracts_before, &contracts_added);
+    assert!(
+        diff_added.is_mutated,
+        "Adding a method MUST mutate class public surface"
+    );
+    assert!(diff_added.modified_symbols.contains(&"TaxCalculator".to_string()));
+}

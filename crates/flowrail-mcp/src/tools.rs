@@ -600,21 +600,33 @@ impl CorridorMcpEngine {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        let rel_path = session
+        let active_idx = session.current_gate_index()?;
+        if gate_index != active_idx {
+            return Err(anyhow!(
+                "OUT_OF_ORDER_EDIT: Cannot edit Gate {} while active gate is {}.",
+                gate_index,
+                active_idx
+            ));
+        }
+
+        let gate = session
             .plan
             .gates
             .get(gate_index)
-            .ok_or_else(|| anyhow!("Invalid gate_index"))?
-            .node
-            .file_path
-            .clone();
+            .ok_or_else(|| anyhow!("Invalid gate_index"))?;
 
+        if gate.status == GateStatus::Locked {
+            return Err(anyhow!(
+                "VISIBILITY_LOCK_VIOLATION: Gate {} ({}) is currently LOCKED.",
+                gate_index,
+                gate.node.symbol_id
+            ));
+        }
+
+        let rel_path = gate.node.file_path.clone();
         let abs_path = self.workspace_root.join(&rel_path);
-        let original_content = session
-            .checkpoints
-            .get(&gate_index)
-            .map(|c| c.original_content.clone())
-            .unwrap_or_else(|| fs::read_to_string(&abs_path).unwrap_or_default());
+        let (original_content, file_existed_originally) =
+            session.get_or_snapshot_file(gate_index, &rel_path);
 
         let pre_hash = TsAstSlicer::compute_file_contract_hash(&abs_path, &original_content)
             .unwrap_or_else(|_| "invalid_pre_ast".to_string());
@@ -642,6 +654,7 @@ impl CorridorMcpEngine {
         session.record_proposed_edit(
             gate_index,
             original_content,
+            file_existed_originally,
             new_content.to_string(),
             pre_hash.clone(),
             post_hash.clone(),

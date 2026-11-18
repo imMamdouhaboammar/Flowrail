@@ -110,3 +110,33 @@ fn test_contract_compatible_function_optional_parameter() {
         "Adding optional parameter cache?: boolean is backward-compatible"
     );
 }
+
+#[test]
+fn test_diff_surfaces_punctuation_spacing_invariance() {
+    let before = vec![ExportedSymbolContract {
+        symbol_name: "CalculateTaxPayload".to_string(),
+        kind: ContractKind::Interface,
+        normalized_signature: "interface CalculateTaxPayload { id: string; amount: number; }"
+            .to_string(),
+        signature_hash: "".to_string(),
+    }];
+
+    let after = vec![ExportedSymbolContract {
+        symbol_name: "CalculateTaxPayload".to_string(),
+        kind: ContractKind::Interface,
+        normalized_signature: "interface CalculateTaxPayload { id : string ; amount : number ; }"
+            .to_string(),
+        signature_hash: "".to_string(),
+    }];
+
+    let diff = ContractHasher::diff_surfaces(&before, &after);
+    assert!(
+        !diff.is_mutated,
+        "Formatting spacing around punctuation must not mutate contract"
+    );
+    assert!(
+        diff.modified_symbols.is_empty(),
+        "Formatting spacing around punctuation must not mark symbol as modified"
+    );
+    assert!(!diff.is_breaking);
+}

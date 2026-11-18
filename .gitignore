@@ -117,3 +117,24 @@ logs/
 *.sqlite-wal
 *.db-shm
 *.db-wal
+
+# Python & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local & Private Overrides
+*.local
+private/
+local/
+
+# Git & Patch Artifacts
+*.orig
+*.rej
+*.patch
+
+# Profiling & Diagnostics
+cargo-timings/
+test-results/
+

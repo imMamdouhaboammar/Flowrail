@@ -259,3 +259,63 @@ fn test_monorepo_multi_package_workspace_resolution() {
 
     let _ = fs::remove_dir_all(&tmp_dir);
 }
+
+#[test]
+fn test_root_relative_specifier_resolution() {
+    let tmp_dir =
+        std::env::temp_dir().join(format!("flowrail_test_root_rel_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(tmp_dir.join("src/components")).unwrap();
+    fs::create_dir_all(tmp_dir.join("src/views")).unwrap();
+
+    fs::write(
+        tmp_dir.join("src/components/button.tsx"),
+        "export const Button = () => null;",
+    )
+    .unwrap();
+
+    let resolver = TsConfigResolver::default();
+    let importing_file = Path::new("src/views/home.tsx");
+
+    // Root-relative import "/src/components/button" must resolve inside tmp_dir, NOT at host /src/components/button
+    let resolved = resolver
+        .resolve_module(&tmp_dir, importing_file, "/src/components/button")
+        .expect("Root-relative import should resolve inside workspace");
+    assert_eq!(resolved, Path::new("src/components/button.tsx"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+#[test]
+fn test_package_prefix_longest_match_priority() {
+    let tmp_dir =
+        std::env::temp_dir().join(format!("flowrail_test_pkg_priority_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp_dir);
+
+    // Packages: @org/core and @org/core-utils
+    fs::create_dir_all(tmp_dir.join("packages/core/src")).unwrap();
+    fs::create_dir_all(tmp_dir.join("packages/core-utils/src")).unwrap();
+
+    let core_pkg = r#"{"name": "@org/core", "main": "./src/index.ts"}"#;
+    fs::write(tmp_dir.join("packages/core/package.json"), core_pkg).unwrap();
+    fs::write(tmp_dir.join("packages/core/src/index.ts"), "export const core = 1;").unwrap();
+
+    let utils_pkg = r#"{"name": "@org/core-utils", "main": "./src/index.ts"}"#;
+    fs::write(tmp_dir.join("packages/core-utils/package.json"), utils_pkg).unwrap();
+    fs::write(
+        tmp_dir.join("packages/core-utils/src/index.ts"),
+        "export const utils = 2;",
+    )
+    .unwrap();
+
+    let resolver = TsConfigResolver::load_from_workspace(&tmp_dir).unwrap();
+    let importing_file = Path::new("apps/web/index.ts");
+
+    // Subpath or exact import to @org/core-utils must match @org/core-utils, not @org/core
+    let res = resolver
+        .resolve_module(&tmp_dir, importing_file, "@org/core-utils")
+        .expect("Should resolve @org/core-utils");
+    assert_eq!(res, Path::new("packages/core-utils/src/index.ts"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+}

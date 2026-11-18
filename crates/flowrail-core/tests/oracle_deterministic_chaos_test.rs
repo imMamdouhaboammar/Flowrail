@@ -88,6 +88,7 @@ fn test_oracle_seeded_deterministic_chaos_rollback() {
             .record_proposed_edit(
                 0,
                 initial_content.to_string(),
+                true,
                 proposed.clone(),
                 "pre_hash".to_string(),
                 "post_hash".to_string(),

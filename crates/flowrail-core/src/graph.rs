@@ -105,6 +105,20 @@ impl CodebaseGraph {
             .and_then(|idx| self.get_node(idx))
     }
 
+    /// Removes a node by symbol_id, updating petgraph's swapped node index in symbol_to_index.
+    pub fn remove_node_by_symbol(&mut self, symbol_id: &str) -> Option<SemanticNode> {
+        let idx = self.symbol_to_index.swap_remove(symbol_id)?;
+        let last_idx = NodeIndex::new(self.graph.node_count().saturating_sub(1));
+        let removed = self.graph.remove_node(idx);
+        if idx != last_idx && idx.index() < self.graph.node_count() {
+            let moved_symbol = self.graph[idx].symbol_id.clone();
+            if let Some(entry) = self.symbol_to_index.get_mut(&moved_symbol) {
+                *entry = idx;
+            }
+        }
+        removed
+    }
+
     /// Resolves a symbol query to a NodeIndex using prioritized matching:
     /// 1. Exact match on symbol_id
     /// 2. Exact match on display_name (preferring exported & non-utility nodes)

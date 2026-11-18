@@ -345,14 +345,30 @@ impl ScipGraphBuilder {
         workspace_root: &Path,
         file_path: &Path,
     ) -> Result<Vec<String>> {
-        let rel_path = file_path
-            .strip_prefix(workspace_root)
-            .unwrap_or(file_path)
+        let raw_rel = file_path.strip_prefix(workspace_root).unwrap_or(file_path);
+        let rel_path = TsConfigResolver::normalize_path(raw_rel)
             .to_string_lossy()
             .to_string();
 
         let source_text = fs::read_to_string(file_path).unwrap_or_default();
         let symbols = TsAstSlicer::analyze_file(file_path, &source_text).unwrap_or_default();
+
+        let new_symbol_ids: std::collections::HashSet<String> = symbols
+            .iter()
+            .map(|s| format!("{}#{}", rel_path, s.name))
+            .collect();
+
+        // Prune any symbols that previously existed in this file but were deleted or renamed
+        let old_file_symbols: Vec<String> = graph
+            .symbol_to_index
+            .iter()
+            .filter(|&(sym, idx)| graph.graph[*idx].file_path == rel_path && !new_symbol_ids.contains(sym))
+            .map(|(sym, _)| sym.clone())
+            .collect();
+
+        for old_sym in old_file_symbols {
+            graph.remove_node_by_symbol(&old_sym);
+        }
 
         let mut updated_symbols = Vec::new();
         for sym in symbols {
