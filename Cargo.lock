@@ -318,7 +318,7 @@ checksum = "5905ec755cc8386d7928353e4d356d2be3e89e81e5ca01fe630a1ca4d08dc175"
 
 [[package]]
 name = "flowrail-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "flowrail-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -351,7 +351,7 @@ dependencies = [
 
 [[package]]
 name = "flowrail-mcp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "flowrail-core",
@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "flowrail-ts-bridge"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "blake3",
