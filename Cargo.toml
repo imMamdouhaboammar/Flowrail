@@ -38,7 +38,7 @@ indexmap = { version = "2.6", features = ["serde"] }
 # Fast AST Slicing & Signature Hashing for TypeScript
 oxc_allocator = "0.38"
 oxc_parser = "0.38"
-oxc_ast = "0.38"
+oxc_ast = "0.158"
 oxc_span = "0.38"
 oxc_semantic = "0.38"
 
