@@ -32,7 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Graph & Algorithms
-petgraph = { version = "0.6", features = ["serde-1"] }
+petgraph = { version = "0.8", features = ["serde-1"] }
 indexmap = { version = "2.6", features = ["serde"] }
 
 # Fast AST Slicing & Signature Hashing for TypeScript
