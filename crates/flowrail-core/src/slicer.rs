@@ -84,7 +84,7 @@ impl CorridorSlicer {
         target_mutation_symbol: Option<&str>,
         config: &PruningConfig,
     ) -> Result<CorridorPlan> {
-        let entry_idx = *graph.symbol_to_index.get(entry_symbol).ok_or_else(|| {
+        let entry_idx = graph.resolve_symbol(entry_symbol).ok_or_else(|| {
             anyhow!(
                 "Entry symbol '{}' not found in semantic graph",
                 entry_symbol
@@ -138,7 +138,7 @@ impl CorridorSlicer {
                 let target_sym = target_mutation_symbol.ok_or_else(|| {
                     anyhow!("target_mutation_symbol is required when intent is MutateContract")
                 })?;
-                let target_idx = *graph.symbol_to_index.get(target_sym).ok_or_else(|| {
+                let target_idx = graph.resolve_symbol(target_sym).ok_or_else(|| {
                     anyhow!("Target mutation symbol '{}' not found in graph", target_sym)
                 })?;
                 active_corridor_nodes.insert(target_idx);
@@ -192,15 +192,23 @@ impl CorridorSlicer {
             });
         }
 
-        let hash_input = format!("{}:{:?}:{:?}", entry_symbol, intent, target_mutation_symbol);
+        let canonical_entry = graph.graph[entry_idx].symbol_id.clone();
+        let canonical_target = target_mutation_symbol.map(|s| {
+            graph
+                .resolve_symbol(s)
+                .map(|idx| graph.graph[idx].symbol_id.clone())
+                .unwrap_or_else(|| s.to_string())
+        });
+
+        let hash_input = format!("{}:{:?}:{:?}", canonical_entry, intent, canonical_target);
         let corridor_hash = blake3::hash(hash_input.as_bytes()).to_hex();
         let corridor_id = format!("cor_{}", &corridor_hash[..8]);
 
         Ok(CorridorPlan {
             corridor_id,
             intent,
-            entry_gate_symbol: entry_symbol.to_string(),
-            target_mutation_symbol: target_mutation_symbol.map(|s| s.to_string()),
+            entry_gate_symbol: canonical_entry,
+            target_mutation_symbol: canonical_target,
             gates,
             pruned_nodes: pruned_records,
         })

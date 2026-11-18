@@ -177,7 +177,10 @@ fn main() -> Result<()> {
             target,
         } => {
             let graph = load_graph(&workspace)?;
-            let slice_intent = if intent == "MUTATE_CONTRACT" {
+            let slice_intent = if intent.eq_ignore_ascii_case("MUTATE_CONTRACT")
+                || intent.eq_ignore_ascii_case("mutate")
+                || intent.eq_ignore_ascii_case("mutatecontract")
+            {
                 SliceIntent::MutateContract
             } else {
                 SliceIntent::ReadFlow

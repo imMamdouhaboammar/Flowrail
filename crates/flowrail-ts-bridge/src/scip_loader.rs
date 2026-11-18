@@ -1,4 +1,5 @@
-use crate::ast_slicer::TsAstSlicer;
+use crate::ast_slicer::{ExtractedImport, TsAstSlicer};
+use crate::tsconfig::TsConfigResolver;
 use anyhow::{Context, Result};
 use flowrail_core::graph::{CodebaseGraph, EdgeKind, NodeRole, SemanticEdge, SemanticNode};
 use protobuf::Message;
@@ -146,18 +147,20 @@ impl ScipGraphBuilder {
         let mut all_ts_files = Vec::new();
         Self::collect_ts_files(workspace_root, &mut all_ts_files)?;
 
+        let resolver = TsConfigResolver::load_from_workspace(workspace_root).unwrap_or_default();
         let mut file_symbols_map: HashMap<String, Vec<SemanticNode>> = HashMap::new();
+        let mut file_imports_map: HashMap<String, Vec<ExtractedImport>> = HashMap::new();
 
-        // Pass 1: Parse all symbols in every TS file
+        // Pass 1: Parse all symbols and imports in every TS file
         for file in &all_ts_files {
-            let rel_path = file
-                .strip_prefix(workspace_root)
-                .unwrap_or(file)
+            let raw_rel = file.strip_prefix(workspace_root).unwrap_or(file);
+            let rel_path = TsConfigResolver::normalize_path(raw_rel)
                 .to_string_lossy()
                 .to_string();
 
             let source_text = fs::read_to_string(file).unwrap_or_default();
             let symbols = TsAstSlicer::analyze_file(file, &source_text).unwrap_or_default();
+            let imports = TsAstSlicer::extract_imports(file, &source_text).unwrap_or_default();
 
             let mut node_list = Vec::new();
             for sym in symbols {
@@ -179,46 +182,153 @@ impl ScipGraphBuilder {
                 graph.upsert_node(node.clone());
                 node_list.push(node);
             }
-            file_symbols_map.insert(rel_path, node_list);
+            file_symbols_map.insert(rel_path.clone(), node_list);
+            file_imports_map.insert(rel_path, imports);
         }
 
-        // Pass 2: Connect cross-file call and type references based on file text
+        // Pass 2: Connect cross-file call and type references based on AST imports & path mappings
         for (rel_path, nodes) in &file_symbols_map {
             let file_path = workspace_root.join(rel_path);
             let source_text = fs::read_to_string(&file_path).unwrap_or_default();
+            let imports = file_imports_map.get(rel_path);
 
-            for node in nodes {
-                let slice = if node.byte_range.1 <= source_text.len()
-                    && node.byte_range.0 < node.byte_range.1
-                {
-                    &source_text[node.byte_range.0..node.byte_range.1]
-                } else {
-                    &source_text
-                };
+            if let Some(import_list) = imports
+                && !import_list.is_empty()
+            {
+                for import_decl in import_list {
+                    let resolved_target = resolver.resolve_module(
+                        workspace_root,
+                        Path::new(rel_path),
+                        &import_decl.source,
+                    );
 
-                for (other_rel, other_nodes) in &file_symbols_map {
-                    if other_rel == rel_path {
-                        continue;
-                    }
-                    for target_node in other_nodes {
-                        if slice.contains(&target_node.display_name) {
-                            let kind = if target_node.role == NodeRole::ContractDefinition {
-                                EdgeKind::ReferencesType
-                            } else if target_node.mutates_domain_state {
-                                EdgeKind::MutatesState
+                    let target_rel_str = match resolved_target {
+                        Some(ref p) => p.to_string_lossy().to_string(),
+                        None => continue,
+                    };
+
+                    let target_nodes = match file_symbols_map.get(&target_rel_str) {
+                        Some(nodes) => nodes,
+                        None => continue,
+                    };
+
+                    for specifier in &import_decl.specifiers {
+                        for target_node in target_nodes {
+                            let is_match = if specifier.imported_name == "*"
+                                || specifier.imported_name == "default"
+                            {
+                                target_node.is_exported
                             } else {
-                                EdgeKind::Calls
+                                target_node.display_name == specifier.imported_name
                             };
 
-                            graph.add_edge_by_symbols(
-                                &node.symbol_id,
-                                &target_node.symbol_id,
-                                SemanticEdge {
-                                    kind,
-                                    call_site_line: node.line_range.0,
-                                    is_dynamic_trace: false,
-                                },
-                            );
+                            if !is_match {
+                                continue;
+                            }
+
+                            // Find caller node whose body slice references the local imported name
+                            let mut caller_found = false;
+                            for caller_node in nodes {
+                                let slice = if caller_node.byte_range.1 <= source_text.len()
+                                    && caller_node.byte_range.0 < caller_node.byte_range.1
+                                {
+                                    &source_text[caller_node.byte_range.0..caller_node.byte_range.1]
+                                } else {
+                                    &source_text
+                                };
+
+                                if slice.contains(&specifier.local_name) {
+                                    caller_found = true;
+                                    let kind = if specifier.is_type_only
+                                        || target_node.role == NodeRole::ContractDefinition
+                                    {
+                                        EdgeKind::ReferencesType
+                                    } else if target_node.mutates_domain_state {
+                                        EdgeKind::MutatesState
+                                    } else {
+                                        EdgeKind::Calls
+                                    };
+
+                                    graph.add_edge_by_symbols(
+                                        &caller_node.symbol_id,
+                                        &target_node.symbol_id,
+                                        SemanticEdge {
+                                            kind,
+                                            call_site_line: caller_node.line_range.0,
+                                            is_dynamic_trace: false,
+                                        },
+                                    );
+                                }
+                            }
+
+                            // If caller not inside a specific function body (e.g. constructor DI or module level),
+                            // link from primary exported node if present
+                            if !caller_found
+                                && source_text.contains(&specifier.local_name)
+                                && let Some(primary_node) = nodes
+                                    .iter()
+                                    .find(|n| n.is_exported)
+                                    .or_else(|| nodes.first())
+                            {
+                                let kind = if specifier.is_type_only
+                                    || target_node.role == NodeRole::ContractDefinition
+                                {
+                                    EdgeKind::ReferencesType
+                                } else if target_node.mutates_domain_state {
+                                    EdgeKind::MutatesState
+                                } else {
+                                    EdgeKind::Calls
+                                };
+
+                                graph.add_edge_by_symbols(
+                                    &primary_node.symbol_id,
+                                    &target_node.symbol_id,
+                                    SemanticEdge {
+                                        kind,
+                                        call_site_line: primary_node.line_range.0,
+                                        is_dynamic_trace: false,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Fallback for files without explicit imports (e.g. scripts or test fixtures)
+                for node in nodes {
+                    let slice = if node.byte_range.1 <= source_text.len()
+                        && node.byte_range.0 < node.byte_range.1
+                    {
+                        &source_text[node.byte_range.0..node.byte_range.1]
+                    } else {
+                        &source_text
+                    };
+
+                    for (other_rel, other_nodes) in &file_symbols_map {
+                        if other_rel == rel_path {
+                            continue;
+                        }
+                        for target_node in other_nodes {
+                            if target_node.is_exported && slice.contains(&target_node.display_name)
+                            {
+                                let kind = if target_node.role == NodeRole::ContractDefinition {
+                                    EdgeKind::ReferencesType
+                                } else if target_node.mutates_domain_state {
+                                    EdgeKind::MutatesState
+                                } else {
+                                    EdgeKind::Calls
+                                };
+
+                                graph.add_edge_by_symbols(
+                                    &node.symbol_id,
+                                    &target_node.symbol_id,
+                                    SemanticEdge {
+                                        kind,
+                                        call_site_line: node.line_range.0,
+                                        is_dynamic_trace: false,
+                                    },
+                                );
+                            }
                         }
                     }
                 }

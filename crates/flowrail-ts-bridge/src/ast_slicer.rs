@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use flowrail_core::contract::{ContractHasher, ContractKind, ExportedSymbolContract};
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Declaration, Statement};
+use oxc_ast::ast::{Declaration, ImportDeclarationSpecifier, ImportOrExportKind, Statement};
 use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType, Span};
 use std::path::Path;
@@ -15,6 +15,21 @@ pub struct ExtractedTsSymbol {
     pub is_contract: bool,
     pub mutates_state: bool,
     pub signature_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtractedImport {
+    pub source: String,
+    pub specifiers: Vec<ImportSpecifierDetail>,
+    pub is_type_only: bool,
+    pub line: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportSpecifierDetail {
+    pub imported_name: String,
+    pub local_name: String,
+    pub is_type_only: bool,
 }
 
 pub struct TsAstSlicer;
@@ -193,6 +208,113 @@ impl TsAstSlicer {
             .map(|(idx, line)| format!("{:4} | {}", s + idx + 1, line))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// Extracts all import declarations (and re-export sources) from a TypeScript file using oxc.
+    pub fn extract_imports(file_path: &Path, source_text: &str) -> Result<Vec<ExtractedImport>> {
+        let allocator = Allocator::default();
+        let source_type = SourceType::from_path(file_path)
+            .unwrap_or_default()
+            .with_typescript(true);
+        let ret = Parser::new(&allocator, source_text, source_type).parse();
+        let line_starts = Self::compute_line_starts(source_text);
+        let mut imports = Vec::new();
+
+        for stmt in &ret.program.body {
+            match stmt {
+                Statement::ImportDeclaration(import_decl) => {
+                    let source = import_decl.source.value.to_string();
+                    let line = Self::byte_to_line(&line_starts, import_decl.span.start as usize);
+                    let is_type_only = import_decl.import_kind == ImportOrExportKind::Type;
+                    let mut specifiers = Vec::new();
+
+                    if let Some(specs) = &import_decl.specifiers {
+                        for spec in specs {
+                            match spec {
+                                ImportDeclarationSpecifier::ImportSpecifier(s) => {
+                                    let imported_name = s.imported.name().to_string();
+                                    let local_name = s.local.name.to_string();
+                                    let spec_type_only =
+                                        is_type_only || s.import_kind == ImportOrExportKind::Type;
+                                    specifiers.push(ImportSpecifierDetail {
+                                        imported_name,
+                                        local_name,
+                                        is_type_only: spec_type_only,
+                                    });
+                                }
+                                ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
+                                    specifiers.push(ImportSpecifierDetail {
+                                        imported_name: "default".to_string(),
+                                        local_name: s.local.name.to_string(),
+                                        is_type_only,
+                                    });
+                                }
+                                ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
+                                    specifiers.push(ImportSpecifierDetail {
+                                        imported_name: "*".to_string(),
+                                        local_name: s.local.name.to_string(),
+                                        is_type_only,
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    imports.push(ExtractedImport {
+                        source,
+                        specifiers,
+                        is_type_only,
+                        line,
+                    });
+                }
+                Statement::ExportNamedDeclaration(export_decl) => {
+                    if let Some(src) = &export_decl.source {
+                        let source = src.value.to_string();
+                        let line =
+                            Self::byte_to_line(&line_starts, export_decl.span.start as usize);
+                        let is_type_only = export_decl.export_kind == ImportOrExportKind::Type;
+                        let mut specifiers = Vec::new();
+
+                        for spec in &export_decl.specifiers {
+                            let imported_name = spec.local.name().to_string();
+                            let local_name = spec.exported.name().to_string();
+                            let spec_type_only =
+                                is_type_only || spec.export_kind == ImportOrExportKind::Type;
+                            specifiers.push(ImportSpecifierDetail {
+                                imported_name,
+                                local_name,
+                                is_type_only: spec_type_only,
+                            });
+                        }
+
+                        imports.push(ExtractedImport {
+                            source,
+                            specifiers,
+                            is_type_only,
+                            line,
+                        });
+                    }
+                }
+                Statement::ExportAllDeclaration(export_all) => {
+                    let source = export_all.source.value.to_string();
+                    let line = Self::byte_to_line(&line_starts, export_all.span.start as usize);
+                    let is_type_only = export_all.export_kind == ImportOrExportKind::Type;
+                    imports.push(ExtractedImport {
+                        source,
+                        specifiers: vec![ImportSpecifierDetail {
+                            imported_name: "*".to_string(),
+                            local_name: "*".to_string(),
+                            is_type_only,
+                        }],
+                        is_type_only,
+                        line,
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        Ok(imports)
     }
 
     fn extract_declaration(
