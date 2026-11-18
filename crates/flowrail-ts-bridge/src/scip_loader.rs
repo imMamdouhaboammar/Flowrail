@@ -362,7 +362,9 @@ impl ScipGraphBuilder {
         let old_file_symbols: Vec<String> = graph
             .symbol_to_index
             .iter()
-            .filter(|&(sym, idx)| graph.graph[*idx].file_path == rel_path && !new_symbol_ids.contains(sym))
+            .filter(|&(sym, idx)| {
+                graph.graph[*idx].file_path == rel_path && !new_symbol_ids.contains(sym)
+            })
             .map(|(sym, _)| sym.clone())
             .collect();
 

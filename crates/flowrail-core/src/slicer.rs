@@ -265,8 +265,7 @@ impl CorridorSlicer {
             return vec![target_idx];
         }
 
-        let (mut in_degrees, dependents) =
-            build_mutation_dependency_graph(graph, &reachable);
+        let (mut in_degrees, dependents) = build_mutation_dependency_graph(graph, &reachable);
 
         let mut ready: VecDeque<NodeIndex> = VecDeque::new();
         let mut initial_ready: Vec<NodeIndex> = in_degrees
@@ -275,9 +274,8 @@ impl CorridorSlicer {
             .map(|(&idx, _)| idx)
             .collect();
 
-        initial_ready.sort_by(|&a, &b| {
-            compare_mutation_nodes(a, b, target_idx, &distance_map, graph)
-        });
+        initial_ready
+            .sort_by(|&a, &b| compare_mutation_nodes(a, b, target_idx, &distance_map, graph));
 
         for idx in initial_ready {
             ready.push_back(idx);
@@ -293,9 +291,8 @@ impl CorridorSlicer {
             ordered.push(curr);
 
             let mut newly_ready = advance_dependents(curr, &dependents, &mut in_degrees, &visited);
-            newly_ready.sort_by(|&a, &b| {
-                compare_mutation_nodes(a, b, target_idx, &distance_map, graph)
-            });
+            newly_ready
+                .sort_by(|&a, &b| compare_mutation_nodes(a, b, target_idx, &distance_map, graph));
             for idx in newly_ready {
                 ready.push_back(idx);
             }
@@ -397,7 +394,10 @@ fn advance_dependents(
 fn build_mutation_dependency_graph(
     graph: &CodebaseGraph,
     reachable: &HashSet<NodeIndex>,
-) -> (HashMap<NodeIndex, usize>, HashMap<NodeIndex, Vec<NodeIndex>>) {
+) -> (
+    HashMap<NodeIndex, usize>,
+    HashMap<NodeIndex, Vec<NodeIndex>>,
+) {
     let mut in_degrees = HashMap::new();
     let mut dependents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
 

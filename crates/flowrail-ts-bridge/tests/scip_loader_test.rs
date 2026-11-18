@@ -66,8 +66,16 @@ export function calculateB(): number { return 2; }
     fs::write(&file_path, code_v1).unwrap();
 
     let mut graph = ScipGraphBuilder::build_from_directory(&temp_dir).unwrap();
-    assert!(graph.get_node_by_symbol("src/service.ts#calculateA").is_some());
-    assert!(graph.get_node_by_symbol("src/service.ts#calculateB").is_some());
+    assert!(
+        graph
+            .get_node_by_symbol("src/service.ts#calculateA")
+            .is_some()
+    );
+    assert!(
+        graph
+            .get_node_by_symbol("src/service.ts#calculateB")
+            .is_some()
+    );
 
     // Version 2: calculateB is deleted, calculateC is added
     let code_v2 = r#"
@@ -79,12 +87,22 @@ export function calculateC(): number { return 30; }
     ScipGraphBuilder::update_file_in_graph(&mut graph, &temp_dir, &file_path).unwrap();
 
     // calculateA must still exist
-    assert!(graph.get_node_by_symbol("src/service.ts#calculateA").is_some());
+    assert!(
+        graph
+            .get_node_by_symbol("src/service.ts#calculateA")
+            .is_some()
+    );
     // calculateC must now exist
-    assert!(graph.get_node_by_symbol("src/service.ts#calculateC").is_some());
+    assert!(
+        graph
+            .get_node_by_symbol("src/service.ts#calculateC")
+            .is_some()
+    );
     // calculateB must have been pruned!
     assert!(
-        graph.get_node_by_symbol("src/service.ts#calculateB").is_none(),
+        graph
+            .get_node_by_symbol("src/service.ts#calculateB")
+            .is_none(),
         "Deleted symbol must be pruned from graph on incremental file update"
     );
 

@@ -98,5 +98,9 @@ export class TaxCalculator {
         diff_added.is_mutated,
         "Adding a method MUST mutate class public surface"
     );
-    assert!(diff_added.modified_symbols.contains(&"TaxCalculator".to_string()));
+    assert!(
+        diff_added
+            .modified_symbols
+            .contains(&"TaxCalculator".to_string())
+    );
 }

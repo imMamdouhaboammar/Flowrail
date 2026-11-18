@@ -298,7 +298,11 @@ fn test_package_prefix_longest_match_priority() {
 
     let core_pkg = r#"{"name": "@org/core", "main": "./src/index.ts"}"#;
     fs::write(tmp_dir.join("packages/core/package.json"), core_pkg).unwrap();
-    fs::write(tmp_dir.join("packages/core/src/index.ts"), "export const core = 1;").unwrap();
+    fs::write(
+        tmp_dir.join("packages/core/src/index.ts"),
+        "export const core = 1;",
+    )
+    .unwrap();
 
     let utils_pkg = r#"{"name": "@org/core-utils", "main": "./src/index.ts"}"#;
     fs::write(tmp_dir.join("packages/core-utils/package.json"), utils_pkg).unwrap();
