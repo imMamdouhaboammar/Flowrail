@@ -13,11 +13,17 @@ pub enum SessionPhase {
     Completed,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GateCheckpoint {
     pub gate_index: usize,
     pub file_path: String,
     pub original_content: String,
+    #[serde(default = "default_true")]
+    pub file_existed_originally: bool,
     pub proposed_content: Option<String>,
     pub pre_edit_contract_hash: String,
     pub post_edit_contract_hash: Option<String>,
@@ -84,6 +90,7 @@ impl CorridorSession {
         &mut self,
         gate_index: usize,
         original_content: String,
+        file_existed_originally: bool,
         proposed_content: String,
         pre_hash: String,
         post_hash: String,
@@ -104,6 +111,7 @@ impl CorridorSession {
             gate_index,
             file_path: self.plan.gates[gate_index].node.file_path.clone(),
             original_content,
+            file_existed_originally,
             proposed_content: Some(proposed_content),
             pre_edit_contract_hash: pre_hash,
             post_edit_contract_hash: Some(post_hash),
@@ -127,6 +135,24 @@ impl CorridorSession {
         Ok(())
     }
 
+    pub fn get_or_snapshot_file(&self, gate_index: usize, file_path: &str) -> (String, bool) {
+        let abs_path = self.workspace_root.join(file_path);
+        let file_existed = abs_path.exists();
+        let original_content = if let Some(existing) = self.checkpoints.get(&gate_index) {
+            existing.original_content.clone()
+        } else if file_existed {
+            std::fs::read_to_string(&abs_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let file_existed_originally = self
+            .checkpoints
+            .get(&gate_index)
+            .map(|c| c.file_existed_originally)
+            .unwrap_or(file_existed);
+        (original_content, file_existed_originally)
+    }
+
     pub fn propose_gate_edit(
         &mut self,
         gate_index: usize,
@@ -136,13 +162,8 @@ impl CorridorSession {
         acknowledge_blast_radius: bool,
     ) -> Result<()> {
         let abs_path = self.workspace_root.join(file_path);
-        let original_content = if let Some(existing) = self.checkpoints.get(&gate_index) {
-            existing.original_content.clone()
-        } else if abs_path.exists() {
-            std::fs::read_to_string(&abs_path).unwrap_or_default()
-        } else {
-            String::new()
-        };
+        let (original_content, file_existed_originally) =
+            self.get_or_snapshot_file(gate_index, file_path);
 
         let pre_hash = self
             .checkpoints
@@ -158,6 +179,7 @@ impl CorridorSession {
         self.record_proposed_edit(
             gate_index,
             original_content,
+            file_existed_originally,
             proposed_content.to_string(),
             pre_hash,
             post_contract_hash.to_string(),
@@ -265,19 +287,26 @@ impl CorridorSession {
         }
 
         let mut restored_files = Vec::new();
-        let indices_to_revert: Vec<usize> = self
+        let mut indices_to_revert: Vec<usize> = self
             .checkpoints
             .keys()
             .copied()
             .filter(|&k| k >= target_gate)
             .collect();
+        indices_to_revert.sort_unstable_by(|a, b| b.cmp(a));
 
         for k in indices_to_revert {
-            if let Some(chk) = self.checkpoints.remove(&k) {
-                let abs_path = self.workspace_root.join(&chk.file_path);
+            let Some(chk) = self.checkpoints.get(&k) else {
+                continue;
+            };
+            let abs_path = self.workspace_root.join(&chk.file_path);
+            if chk.file_existed_originally {
                 std::fs::write(&abs_path, &chk.original_content)?;
-                restored_files.push((abs_path, chk.file_path));
+            } else if abs_path.exists() {
+                let _ = std::fs::remove_file(&abs_path);
             }
+            restored_files.push((abs_path, chk.file_path.clone()));
+            self.checkpoints.remove(&k);
         }
 
         for (i, gate) in self.plan.gates.iter_mut().enumerate() {

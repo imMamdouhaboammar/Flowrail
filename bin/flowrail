@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -e
+
+# Flowrail CLI Driver & Launcher
+# Resolves native binary or runs via Cargo with full stdio transparency for MCP
+
+# Resolve symlink chain if invoked via a symlink
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+ROOT_DIR="$(cd -P "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
+
+# 1. Check if flowrail is already installed in PATH
+if command -v flowrail >/dev/null 2>&1 && [ "$(command -v flowrail)" != "${BASH_SOURCE[0]}" ]; then
+    exec flowrail "$@"
+fi
+
+# 2. Check for release binary in workspace target
+if [ -x "${ROOT_DIR}/target/release/flowrail" ]; then
+    exec "${ROOT_DIR}/target/release/flowrail" "$@"
+fi
+
+# 3. Check for debug binary in workspace target
+if [ -x "${ROOT_DIR}/target/debug/flowrail" ]; then
+    exec "${ROOT_DIR}/target/debug/flowrail" "$@"
+fi
+
+# 4. Check user cargo bin
+if [ -x "${HOME}/.cargo/bin/flowrail" ]; then
+    exec "${HOME}/.cargo/bin/flowrail" "$@"
+fi
+
+# 5. Fallback: run via cargo
+if command -v cargo >/dev/null 2>&1; then
+    exec cargo run --quiet --manifest-path "${ROOT_DIR}/Cargo.toml" --bin flowrail -- "$@"
+else
+    echo "Error: Flowrail binary not found and 'cargo' is not installed." >&2
+    echo "Please run './install.sh' or install Rust from https://rustup.rs" >&2
+    exit 1
+fi

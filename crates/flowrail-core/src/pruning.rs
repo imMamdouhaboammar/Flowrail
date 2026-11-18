@@ -55,7 +55,12 @@ impl PruneEvaluator {
         let node = &graph.graph[node_idx];
 
         // RULE 1: Never prune target symbol or contract definitions
-        if target_symbol == Some(node.symbol_id.as_str()) {
+        if let Some(target) = target_symbol
+            && (node.symbol_id == target
+                || node.display_name == target
+                || node.symbol_id.ends_with(&format!("#{}", target))
+                || node.symbol_id.ends_with(&format!(".{}", target)))
+        {
             return PrunedNodeRecord {
                 symbol_id: node.symbol_id.clone(),
                 reason: "Protected: Target Symbol".to_string(),

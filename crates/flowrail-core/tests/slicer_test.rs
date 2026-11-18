@@ -200,3 +200,93 @@ fn test_backward_slice_mutation_dag_and_contagion() {
         "src/invoicing/invoice.generator.ts"
     );
 }
+
+#[test]
+fn test_mutation_dag_diamond_topological_ordering() {
+    let mut graph = CodebaseGraph::new();
+
+    // Diamond: Controller calls both Service and TargetRepo. Service calls TargetRepo.
+    let ctrl = SemanticNode {
+        symbol_id: "src/ctrl.ts#Ctrl".to_string(),
+        display_name: "Ctrl".to_string(),
+        file_path: "src/ctrl.ts".to_string(),
+        byte_range: (0, 100),
+        line_range: (1, 10),
+        role: NodeRole::EntryGate,
+        signature_hash: "h_c".to_string(),
+        mutates_domain_state: false,
+        is_exported: true,
+    };
+    let svc = SemanticNode {
+        symbol_id: "src/svc.ts#Svc".to_string(),
+        display_name: "Svc".to_string(),
+        file_path: "src/svc.ts".to_string(),
+        byte_range: (0, 100),
+        line_range: (1, 10),
+        role: NodeRole::BusinessLogic,
+        signature_hash: "h_s".to_string(),
+        mutates_domain_state: false,
+        is_exported: true,
+    };
+    let repo = SemanticNode {
+        symbol_id: "src/repo.ts#Repo".to_string(),
+        display_name: "Repo".to_string(),
+        file_path: "src/repo.ts".to_string(),
+        byte_range: (0, 100),
+        line_range: (1, 10),
+        role: NodeRole::DataRepository,
+        signature_hash: "h_r".to_string(),
+        mutates_domain_state: true,
+        is_exported: true,
+    };
+
+    let c_idx = graph.add_node(ctrl.clone());
+    let s_idx = graph.add_node(svc.clone());
+    let r_idx = graph.add_node(repo.clone());
+
+    // Edges: Ctrl -> Svc, Svc -> Repo, Ctrl -> Repo
+    graph.add_edge(
+        c_idx,
+        s_idx,
+        SemanticEdge {
+            kind: EdgeKind::Calls,
+            call_site_line: 3,
+            is_dynamic_trace: false,
+        },
+    );
+    graph.add_edge(
+        s_idx,
+        r_idx,
+        SemanticEdge {
+            kind: EdgeKind::Calls,
+            call_site_line: 5,
+            is_dynamic_trace: false,
+        },
+    );
+    graph.add_edge(
+        c_idx,
+        r_idx,
+        SemanticEdge {
+            kind: EdgeKind::Calls,
+            call_site_line: 7,
+            is_dynamic_trace: false,
+        },
+    );
+
+    let plan = CorridorSlicer::slice(
+        &graph,
+        &ctrl.symbol_id,
+        SliceIntent::MutateContract,
+        Some(&repo.symbol_id),
+        &PruningConfig::default(),
+    )
+    .expect("Slice must succeed");
+
+    assert_eq!(plan.gates.len(), 3);
+    assert_eq!(plan.gates[0].node.symbol_id, repo.symbol_id);
+    assert_eq!(
+        plan.gates[1].node.symbol_id, svc.symbol_id,
+        "Callee Svc must be mutated before caller Ctrl in diamond dependency"
+    );
+    assert_eq!(plan.gates[2].node.symbol_id, ctrl.symbol_id);
+}

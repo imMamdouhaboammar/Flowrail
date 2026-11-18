@@ -12,6 +12,54 @@ That’s the problem I want Flowrail to help with. When I’m reading a feature,
 
 Flowrail calls those two views a **read corridor** and a **mutation plan**. The first gives the agent a focused view of the feature. The second is meant to show which changes depend on others and which consumers need a closer look. The agent still writes the patch. A reference tells us who might be affected. Compiler diagnostics and tests tell us what actually broke.
 
+## Quickstart (1-Command Install & Demo)
+
+### 1. Try Live Demonstration Immediately
+```bash
+./quickstart.sh
+# Or using the driver:
+./bin/flowrail demo
+```
+
+### 2. Install Flowrail Globally
+```bash
+# Automated installer (builds release binary and links to PATH)
+./install.sh
+
+# Or via Cargo directly:
+cargo install --path crates/flowrail-cli --force
+```
+
+### 3. Initialize MCP for Cursor / Claude Code / Windsurf
+In any TypeScript workspace, run:
+```bash
+flowrail init
+```
+This automatically configures `.cursor/mcp.json`, `.claude/mcp.json`, and `.flowrail/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "flowrail": {
+      "command": "flowrail",
+      "args": ["--workspace", ".", "mcp"]
+    }
+  }
+}
+```
+
+### 4. Agent Skill & OmniSkill Package
+Flowrail ships with a certified, zero-slop Agent Skill verified by OmniSkill (`omni-skill validate` 10/10 clean score):
+- **Skill Path:** [`.agents/skills/flowrail/SKILL.md`](.agents/skills/flowrail/SKILL.md)
+- **Global Alias:** `~/.agents/skills/flowrail/SKILL.md`
+
+Agents automatically use Flowrail's 8 stateful MCP tools (`flowrail_discover_entrypoints`, `flowrail_find_symbols`, `flowrail_grep`, `flowrail_open`, `flowrail_inspect_gate`, `flowrail_propose_edit`, `flowrail_advance_gate`, `flowrail_abort_or_rollback`) to enforce:
+1. **Sequential Visibility Locks:** Future gates hidden until the active file passes verification (syntax verification via Tier 1 OXC parser by default; full TypeScript type-checking when `--full-typecheck` is enabled).
+2. **Body-Agnostic BLAKE3 Contract Hashing:** Immunity to internal whitespace and body edits; triggers only on signature changes.
+3. **Contagion Barrier:** Mandatory acknowledgment of cross-module blast radius before advancement.
+
+---
+
 ## Try the preview
 
 Use Rust 1.99.1, the toolchain used in CI. From the repository root:

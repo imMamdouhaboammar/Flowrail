@@ -1,9 +1,9 @@
 # Flowrail · Full Specifications
 
-**Product:** Flowrail<br>
-**Internal project:** Ariadne<br>
-**Owner:** Mamdouh Aboammar<br>
-**Edition:** 1.0 · 15 November 2026<br>
+**Product:** Flowrail  
+**Internal project:** Ariadne  
+**Owner:** Mamdouh Aboammar  
+**Edition:** 1.0 · 15 November 2026  
 **Status:** Proposed product and engineering specification with a dated implementation baseline
 
 Flowrail gives a coding agent a task-specific view of a codebase and an evidence-backed plan for changing it. The first use case is a shared TypeScript contract change that starts in one business flow and reaches consumers owned by other modules. Flowrail's analysis is deterministic and local. The external agent authors edits.

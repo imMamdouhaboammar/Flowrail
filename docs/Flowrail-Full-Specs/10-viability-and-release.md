@@ -1,7 +1,7 @@
 # Viability, MVP scope, and release criteria
 
-**Assessment date** · 15 November 2026<br>
-**Status** · Working prototype. Read-only MVP criteria pending.<br>
+**Assessment date** · 15 November 2026  
+**Status** · Working prototype. Read-only MVP criteria pending.  
 **Scope** · Local Rust tooling for TypeScript projects
 
 ## Feasibility and product value

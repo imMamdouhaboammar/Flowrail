@@ -1,0 +1,39 @@
+{
+  "name": "flowrail",
+  "version": "0.1.0",
+  "description": "Flowrail (Project Ariadne): Deterministic Execution & Mutation State-Machine for AI Coding Agents",
+  "author": "Mamdouh Aboammar <mamdouhfces1997@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/imMamdouhaboammar/Flowrail",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imMamdouhaboammar/Flowrail.git"
+  },
+  "keywords": [
+    "flowrail",
+    "mcp",
+    "mcp-server",
+    "codebase-graph",
+    "refactoring",
+    "ast-slicing",
+    "ai-agents",
+    "cursor",
+    "claude-code",
+    "antigravity"
+  ],
+  "bin": {
+    "flowrail": "./bin/flowrail"
+  },
+  "scripts": {
+    "build": "cargo build --release",
+    "test": "cargo test",
+    "doctor": "./bin/flowrail doctor",
+    "demo": "./bin/flowrail demo",
+    "init": "./bin/flowrail init",
+    "mcp": "./bin/flowrail mcp",
+    "install-cli": "cargo install --path crates/flowrail-cli"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
