@@ -1,0 +1,9 @@
+# Flowrail Rules for Cursor
+
+See `rules/AGENTS.md` and `.cursor/rules/flowrail.mdc` for the authoritative directives.
+
+- Use `flowrail_discover_entrypoints` instead of recursive file greps.
+- Use `flowrail_open({ intent: "READ_FLOW" })` to trace execution paths.
+- Use `flowrail_open({ intent: "MUTATE_CONTRACT" })` for reverse topological edits.
+- Never edit locked future gates.
+- Always check and resolve contagion barriers.

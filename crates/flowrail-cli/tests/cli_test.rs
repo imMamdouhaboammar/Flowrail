@@ -141,7 +141,16 @@ fn test_cli_init() {
     assert!(output.status.success());
     assert!(temp_dir.join(".flowrail/mcp.json").exists());
     assert!(temp_dir.join(".cursor/mcp.json").exists());
+    assert!(temp_dir.join(".cursor/rules/flowrail.mdc").exists());
     assert!(temp_dir.join(".mcp.json").exists());
+    assert!(temp_dir.join(".claude/CLAUDE.md").exists());
+    assert!(temp_dir.join(".codex/config.toml").exists());
+    assert!(temp_dir.join(".codex/rules.md").exists());
+    assert!(temp_dir.join(".opencode/opencode.json").exists());
+    assert!(temp_dir.join(".windsurf/mcp_config.json").exists());
+    assert!(temp_dir.join(".zed/settings.json").exists());
+    assert!(temp_dir.join(".vscode/mcp.json").exists());
+    assert!(temp_dir.join("mcp_config.json").exists());
 }
 
 #[test]

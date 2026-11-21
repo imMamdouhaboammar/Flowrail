@@ -70,15 +70,21 @@ echo "🔍 Running Flowrail Doctor..."
 "${CARGO_BIN_DIR}/flowrail" doctor
 
 echo ""
+echo "🔌 Registering Flowrail Plugin across Claude, Codex, OpenCode & Antigravity..."
+if command -v python3 >/dev/null 2>&1 && [ -f "${ROOT_DIR}/scripts/install_multi_harness.py" ]; then
+    python3 "${ROOT_DIR}/scripts/install_multi_harness.py"
+fi
+
+echo ""
 echo "🎉 Flowrail is successfully installed!"
 echo ""
 echo "Quick Commands:"
 echo "  flowrail demo           # Run instant live demonstration on ecommerce fixture"
-echo "  flowrail init           # Scaffold .flowrail/ and configure MCP for Cursor & Claude Code"
+echo "  flowrail init           # Scaffold .flowrail/ and configure MCP for all agent harnesses"
 echo "  flowrail search <query> # Fuzzy symbol search with Git status & frecency"
 echo "  flowrail grep <query>   # In-memory definition grep"
 echo "  flowrail mcp            # Start stdio MCP server"
 echo ""
-echo "To connect to Cursor or Claude Code, run in your TypeScript project:"
-echo "  flowrail init"
+echo "To connect any project to Claude, Codex, OpenCode, Cursor, Windsurf, or Zed, run:"
+echo "  flowrail init --target all"
 echo "=========================================================="

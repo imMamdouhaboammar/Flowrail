@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "flowrail": {
+      "command": "flowrail",
+      "args": ["mcp"],
+      "env": {
+        "PATH": "/Users/mamdouhaboammar/.cargo/bin:/Users/mamdouhaboammar/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}

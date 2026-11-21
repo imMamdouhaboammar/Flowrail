@@ -407,8 +407,15 @@ impl ScipGraphBuilder {
         if !dir.is_dir() {
             return Ok(());
         }
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
+        let read_dir = match fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(_) => return Ok(()),
+        };
+        for entry in read_dir {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
             let path = entry.path();
             if path.is_dir() {
                 let name = path.file_name().unwrap_or_default().to_string_lossy();
@@ -418,7 +425,7 @@ impl ScipGraphBuilder {
                     && name != "target"
                     && name != "do-not-care"
                 {
-                    Self::collect_ts_files(&path, files)?;
+                    let _ = Self::collect_ts_files(&path, files);
                 }
             } else if let Some(ext) = path.extension()
                 && (ext == "ts" || ext == "tsx")

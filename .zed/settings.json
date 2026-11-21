@@ -1,0 +1,10 @@
+{
+  "context_servers": {
+    "flowrail": {
+      "command": {
+        "path": "flowrail",
+        "args": ["mcp"]
+      }
+    }
+  }
+}

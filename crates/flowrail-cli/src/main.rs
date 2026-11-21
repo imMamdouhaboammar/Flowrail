@@ -76,7 +76,7 @@ enum Commands {
     },
     /// Inspects and verifies workspace readiness, extracted symbols, and graph statistics
     Doctor,
-    /// Initializes Flowrail configuration and generates MCP server setups for Cursor, Claude Code, and Windsurf
+    /// Initializes Flowrail configuration and generates MCP server setups for Claude, Codex, OpenCode, Cursor, Windsurf, Zed, and Antigravity
     Init {
         #[arg(long, default_value = "all")]
         target: String,
@@ -119,6 +119,11 @@ enum ArtifactCommands {
 }
 
 fn load_graph(workspace: &std::path::Path) -> Result<flowrail_core::graph::CodebaseGraph> {
+    if workspace == std::path::Path::new("/") {
+        eprintln!("[flowrail] Workspace resolved to root ('/'). Skipping recursive AST scan.");
+        return Ok(flowrail_core::graph::CodebaseGraph::new());
+    }
+
     let scip_candidates = [
         workspace.join(".flowrail/index.scip"),
         workspace.join(".corridor/index.scip"),
@@ -138,7 +143,17 @@ fn load_graph(workspace: &std::path::Path) -> Result<flowrail_core::graph::Codeb
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let raw_workspace = cli.workspace.clone();
-    let workspace = cli.workspace.canonicalize().unwrap_or(cli.workspace);
+    let mut workspace = cli.workspace.canonicalize().unwrap_or(cli.workspace);
+
+    if raw_workspace == std::path::Path::new(".")
+        && let Ok(env_ws) = std::env::var("FLOWRAIL_WORKSPACE")
+    {
+        let trimmed = env_ws.trim();
+        if !trimmed.is_empty() {
+            let p = PathBuf::from(trimmed);
+            workspace = p.canonicalize().unwrap_or(p);
+        }
+    }
 
     match cli.command {
         Commands::Index => {
@@ -482,7 +497,10 @@ fn main() -> Result<()> {
                 flowrail_mcp_path.display()
             );
 
-            if target == "all" || target == "cursor" {
+            let is_all = target == "all";
+
+            // 1. Cursor
+            if is_all || target == "cursor" {
                 let cursor_dir = workspace.join(".cursor");
                 std::fs::create_dir_all(&cursor_dir)?;
                 let cursor_mcp_path = cursor_dir.join("mcp.json");
@@ -498,9 +516,21 @@ fn main() -> Result<()> {
                         cursor_mcp_path.display()
                     );
                 }
+                let cursor_rules_dir = cursor_dir.join("rules");
+                std::fs::create_dir_all(&cursor_rules_dir)?;
+                let cursor_mdc_path = cursor_rules_dir.join("flowrail.mdc");
+                if force || !cursor_mdc_path.exists() {
+                    let mdc_content = "---\ndescription: Flowrail deterministic execution, flow slicing, and mutation rules\nglobs: **/*\nalwaysApply: true\n---\n\n# Flowrail Execution & Mutation Rules\n\n- Discover entrypoints with flowrail_discover_entrypoints.\n- Read flows sequentially with flowrail_open({ intent: \"READ_FLOW\" }).\n- Mutate contracts with flowrail_open({ intent: \"MUTATE_CONTRACT\" }) in reverse topological order.\n";
+                    std::fs::write(&cursor_mdc_path, mdc_content)?;
+                    println!(
+                        "  [OK] Created Cursor MDC rule: {}",
+                        cursor_mdc_path.display()
+                    );
+                }
             }
 
-            if target == "all" || target == "claude" {
+            // 2. Claude Code & Claude Desktop
+            if is_all || target == "claude" {
                 let claude_mcp_path = workspace.join(".mcp.json");
                 if force || !claude_mcp_path.exists() {
                     std::fs::write(&claude_mcp_path, &mcp_str)?;
@@ -512,6 +542,152 @@ fn main() -> Result<()> {
                     println!(
                         "  [SKIP] Claude MCP config already exists: {}",
                         claude_mcp_path.display()
+                    );
+                }
+                let claude_dir = workspace.join(".claude");
+                std::fs::create_dir_all(&claude_dir)?;
+                let claude_rule = claude_dir.join("CLAUDE.md");
+                if force || !claude_rule.exists() {
+                    let rule_content = "# Flowrail Claude Directives\n\nSee `rules/AGENTS.md` for deterministic flow navigation and contract mutation rules.\n";
+                    std::fs::write(&claude_rule, rule_content)?;
+                    println!(
+                        "  [OK] Created Claude instructions: {}",
+                        claude_rule.display()
+                    );
+                }
+            }
+
+            // 3. OpenAI Codex
+            if is_all || target == "codex" {
+                let codex_dir = workspace.join(".codex");
+                std::fs::create_dir_all(&codex_dir)?;
+                let codex_toml = codex_dir.join("config.toml");
+                if force || !codex_toml.exists() {
+                    let toml_content = format!(
+                        "[mcp_servers.flowrail]\ncommand = \"flowrail\"\nargs = [\"--workspace\", \"{}\", \"mcp\"]\nstartup_timeout_sec = 30.0\ntool_timeout_sec = 450.0\n",
+                        workspace_arg
+                    );
+                    std::fs::write(&codex_toml, toml_content)?;
+                    println!("  [OK] Created Codex config: {}", codex_toml.display());
+                } else {
+                    println!(
+                        "  [SKIP] Codex config already exists: {}",
+                        codex_toml.display()
+                    );
+                }
+                let codex_rule = codex_dir.join("rules.md");
+                if force || !codex_rule.exists() {
+                    let rule_content = "# Flowrail Codex Directives\n\nSee `rules/AGENTS.md` for deterministic flow navigation and reverse topological mutation.\n";
+                    std::fs::write(&codex_rule, rule_content)?;
+                    println!("  [OK] Created Codex rules: {}", codex_rule.display());
+                }
+            }
+
+            // 4. OpenCode
+            if is_all || target == "opencode" {
+                let opencode_dir = workspace.join(".opencode");
+                std::fs::create_dir_all(&opencode_dir)?;
+                let opencode_json = opencode_dir.join("opencode.json");
+                if force || !opencode_json.exists() {
+                    let opencode_cfg = serde_json::json!({
+                        "$schema": "https://opencode.ai/config.json",
+                        "default_agent": "flowrail-corridor-navigator",
+                        "instructions": ["AGENTS.md", "rules/AGENTS.md"],
+                        "mcpServers": {
+                            "flowrail": {
+                                "command": "flowrail",
+                                "args": ["--workspace", workspace_arg, "mcp"],
+                                "type": "stdio"
+                            }
+                        },
+                        "permission": {
+                            "flowrail_*": "allow"
+                        }
+                    });
+                    std::fs::write(&opencode_json, serde_json::to_string_pretty(&opencode_cfg)?)?;
+                    println!(
+                        "  [OK] Created OpenCode config: {}",
+                        opencode_json.display()
+                    );
+                } else {
+                    println!(
+                        "  [SKIP] OpenCode config already exists: {}",
+                        opencode_json.display()
+                    );
+                }
+            }
+
+            // 5. Windsurf
+            if is_all || target == "windsurf" {
+                let windsurf_dir = workspace.join(".windsurf");
+                std::fs::create_dir_all(&windsurf_dir)?;
+                let ws_mcp = windsurf_dir.join("mcp_config.json");
+                if force || !ws_mcp.exists() {
+                    std::fs::write(&ws_mcp, &mcp_str)?;
+                    println!("  [OK] Created Windsurf MCP config: {}", ws_mcp.display());
+                } else {
+                    println!(
+                        "  [SKIP] Windsurf MCP config already exists: {}",
+                        ws_mcp.display()
+                    );
+                }
+            }
+
+            // 6. Zed
+            if is_all || target == "zed" {
+                let zed_dir = workspace.join(".zed");
+                std::fs::create_dir_all(&zed_dir)?;
+                let zed_cfg = zed_dir.join("settings.json");
+                if force || !zed_cfg.exists() {
+                    let zed_json = serde_json::json!({
+                        "context_servers": {
+                            "flowrail": {
+                                "command": {
+                                    "path": "flowrail",
+                                    "args": ["--workspace", workspace_arg, "mcp"]
+                                }
+                            }
+                        }
+                    });
+                    std::fs::write(&zed_cfg, serde_json::to_string_pretty(&zed_json)?)?;
+                    println!("  [OK] Created Zed settings: {}", zed_cfg.display());
+                } else {
+                    println!("  [SKIP] Zed settings already exist: {}", zed_cfg.display());
+                }
+            }
+
+            // 7. VS Code / Cline
+            if is_all || target == "vscode" {
+                let vscode_dir = workspace.join(".vscode");
+                std::fs::create_dir_all(&vscode_dir)?;
+                let vscode_mcp = vscode_dir.join("mcp.json");
+                if force || !vscode_mcp.exists() {
+                    std::fs::write(&vscode_mcp, &mcp_str)?;
+                    println!(
+                        "  [OK] Created VS Code MCP config: {}",
+                        vscode_mcp.display()
+                    );
+                } else {
+                    println!(
+                        "  [SKIP] VS Code MCP config already exists: {}",
+                        vscode_mcp.display()
+                    );
+                }
+            }
+
+            // 8. Antigravity
+            if is_all || target == "antigravity" {
+                let ag_mcp = workspace.join("mcp_config.json");
+                if force || !ag_mcp.exists() {
+                    std::fs::write(&ag_mcp, &mcp_str)?;
+                    println!(
+                        "  [OK] Created Antigravity MCP config: {}",
+                        ag_mcp.display()
+                    );
+                } else {
+                    println!(
+                        "  [SKIP] Antigravity MCP config already exists: {}",
+                        ag_mcp.display()
                     );
                 }
             }

@@ -1,0 +1,36 @@
+# Flowrail Execution & Mutation Rules
+
+These rules govern how AI coding agents navigate, explore, and refactor codebases using Flowrail (Project Ariadne). They are active whenever the Flowrail plugin is enabled.
+
+## 1. Zero Blind Crawling & Context Hygiene
+- Never perform unconstrained recursive directory traversals, massive file globs, or blind multi-thousand-line greps when investigating features or bugs.
+- Always discover entrypoints via `flowrail_discover_entrypoints` with query/path constraints (e.g. `*.ts !tests/ checkout`) and PageRank ranking.
+- Locate declarations using `flowrail_find_symbols` with typo-tolerant, definition-first matching (`definitions_only: true`).
+- Restrict in-memory searches to the active business flow slice using `flowrail_grep({ scope: "corridor" })` to prevent context pollution and token dilution.
+
+## 2. Reading Corridors (`READ_FLOW`)
+- When understanding an end-to-end execution path, initialize a corridor with `flowrail_open({ entry_symbol: "<symbol>", intent: "READ_FLOW" })`.
+- Traverse the flow sequentially through gates. Use `detail_level: "minimal"` when surveying architecture to preserve context tokens, switching to `full` or `compact: false` only for the specific active gate under inspection.
+- Respect `co_changed_files_warning`: when Git co-change coupling detects historically coupled files that lack explicit static import edges, inspect them before concluding analysis.
+
+## 3. Safe Multi-File Mutation (`MUTATE_CONTRACT`)
+- Never edit multi-file TypeScript dependencies in forward execution order (Controller -> Service -> Repository).
+- For contract, interface, or schema modifications, always initialize a mutation corridor with `flowrail_open({ entry_symbol: "<symbol>", intent: "MUTATE_CONTRACT", target_mutation_symbol: "<symbol>" })`.
+- Flowrail guarantees reverse topological ordering (Contract -> Repository -> Service -> Controller). Follow this sequence strictly:
+  1. Inspect the active unlocked gate: `flowrail_inspect_gate({ gate_index: N })`.
+  2. Propose modifications: `flowrail_propose_edit({ gate_index: N, new_file_content: "..." })`.
+  3. Verify syntax and contract signatures: Review the resulting `contract_delta_kind` (`Cosmetic`, `CompatibleAdditive`, or `Breaking`).
+  4. Advance gate: Call `flowrail_advance_gate()`.
+
+## 4. Visibility Locks & Contagion Barriers
+- Future gates are `LOCKED`. Do not attempt to read or mutate locked gates out of sequence.
+- If modifying an exported signature triggers a `CONTAGION_BARRIER` alert due to external callers outside the active corridor, do NOT silently ignore the breakage.
+- Acknowledge the blast radius by passing `acknowledge_blast_radius: true` in `flowrail_propose_edit`. Flowrail will automatically inject the external callers as new locked gates in the mutation queue to ensure complete, verified remediation.
+- If syntax, types, or business invariants fail at any step, instantly restore the working tree to the prior verified checkpoint using `flowrail_abort_or_rollback({ to_gate_index: N })`.
+
+## 5. Artifact Discipline (ADHD & Anti-Slop)
+- When exporting session state or architecture plans with `flowrail_export_artifact`, always maintain clean, structured JSON payloads.
+- When enriching artifacts via `flowrail_enrich_artifact`:
+  - Enforce zero hallucination: cited symbols and files must exist in the deterministic graph.
+  - Enforce ADHD bounds: headline action first, maximum 5 bounded steps, terminal action last.
+  - Enforce anti-slop doctrine: zero conversational narration, zero syntax play-by-play comments.

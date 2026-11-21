@@ -71,7 +71,10 @@ fn test_get_head_commit_live_repo_and_fallback() {
     let head = GitStatusResolver::get_head_commit(&current_dir);
     assert!(head.is_some(), "Live git repo should have a head commit");
     let head_str = head.unwrap();
-    assert!(head_str.len() >= 40, "Commit hash should be at least 40 chars");
+    assert!(
+        head_str.len() >= 40,
+        "Commit hash should be at least 40 chars"
+    );
 
     // Non-git directory should return None
     let guard = TempDirGuard::new("flowrail_non_git_head_test");
@@ -119,7 +122,17 @@ fn test_get_head_commit_with_submodule_composite() {
 
     // Add submodule using file protocol
     let child_url = child.to_string_lossy().to_string();
-    run(&parent, &["-c", "protocol.file.allow=always", "submodule", "add", &child_url, "modules/sub"]);
+    run(
+        &parent,
+        &[
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            &child_url,
+            "modules/sub",
+        ],
+    );
     run(&parent, &["commit", "-m", "add submodule"]);
 
     let head_with_submodule = GitStatusResolver::get_head_commit(&parent).unwrap();
@@ -129,6 +142,8 @@ fn test_get_head_commit_with_submodule_composite() {
 
     // Make a commit inside the submodule working directory
     let sub_dir = parent.join("modules/sub");
+    run(&sub_dir, &["config", "user.name", "Tester"]);
+    run(&sub_dir, &["config", "user.email", "test@flowrail.dev"]);
     std::fs::write(sub_dir.join("file.txt"), "hello world updated").unwrap();
     run(&sub_dir, &["add", "file.txt"]);
     run(&sub_dir, &["commit", "-m", "update inside submodule"]);
@@ -175,12 +190,7 @@ fn test_git_co_change_coupling_discovery() {
     run(&["add", "fileC.ts"]);
     run(&["commit", "-m", "commit 3: C alone"]);
 
-    let coupled = GitStatusResolver::find_co_changed_files(
-        root,
-        &["fileA.ts".to_string()],
-        50,
-        2,
-    );
+    let coupled = GitStatusResolver::find_co_changed_files(root, &["fileA.ts".to_string()], 50, 2);
 
     assert_eq!(coupled.len(), 1);
     assert_eq!(coupled[0].file_path, "fileB.ts");

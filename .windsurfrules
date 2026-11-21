@@ -1,0 +1,7 @@
+# Flowrail Rules for Windsurf Cascade
+
+- Flowrail MCP Server provides deterministic codebase slicing and mutation plans.
+- Discover entrypoints with `flowrail_discover_entrypoints`.
+- Read flows sequentially with `flowrail_open` and `flowrail_inspect_gate`.
+- Plan contract refactoring safely with `flowrail_open({ intent: "MUTATE_CONTRACT" })`.
+- Respect contagion barriers and never edit locked future gates out of order.

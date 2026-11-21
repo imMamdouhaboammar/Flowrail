@@ -290,7 +290,11 @@ impl CodebaseGraph {
         let mut next_ranks: Vec<f64> = vec![0.0; n];
 
         let out_degrees: Vec<usize> = (0..n)
-            .map(|i| self.graph.edges_directed(NodeIndex::new(i), Direction::Outgoing).count())
+            .map(|i| {
+                self.graph
+                    .edges_directed(NodeIndex::new(i), Direction::Outgoing)
+                    .count()
+            })
             .collect();
 
         for _ in 0..max_iters.max(1) {
@@ -308,7 +312,10 @@ impl CodebaseGraph {
                 let out_deg = out_degrees[i];
                 if out_deg > 0 {
                     let share = damping * ranks[i] / (out_deg as f64);
-                    for edge in self.graph.edges_directed(NodeIndex::new(i), Direction::Outgoing) {
+                    for edge in self
+                        .graph
+                        .edges_directed(NodeIndex::new(i), Direction::Outgoing)
+                    {
                         next_ranks[edge.target().index()] += share;
                     }
                 }

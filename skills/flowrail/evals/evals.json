@@ -1,0 +1,24 @@
+{
+  "evals": [
+    {
+      "id": "trigger-positive-1",
+      "prompt": "Run flowrail for me",
+      "assertions": [
+        {
+          "pattern": "flowrail",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "negative-collision-1",
+      "prompt": "Tell me a generic joke",
+      "assertions": [
+        {
+          "pattern": "flowrail",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

@@ -220,7 +220,9 @@ impl GitStatusResolver {
 
         for oid_res in revwalk.take(max_commits) {
             let Ok(oid) = oid_res else { continue };
-            let Ok(commit) = repo.find_commit(oid) else { continue };
+            let Ok(commit) = repo.find_commit(oid) else {
+                continue;
+            };
             if commit.parent_count() > 1 {
                 // Skip merge commits for clean delta attribution
                 continue;

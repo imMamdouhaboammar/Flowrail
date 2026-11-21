@@ -1,0 +1,18 @@
+{
+  "name": "flowrail",
+  "displayName": "Flowrail",
+  "version": "0.1.2",
+  "description": "Deterministic Execution & Mutation State-Machine for AI Coding Agents. Slices codebases into isolated Business Flow Corridors, Topological Mutation Plans, and Blast-Radius Fencing via native MCP & Specialized Subagents.",
+  "author": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/Flowrail",
+  "repository": "https://github.com/imMamdouhaboammar/Flowrail",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Discover entrypoints and inspect a business flow corridor with Flowrail",
+    "Plan a safe topological mutation corridor and fence blast radius before editing",
+    "Run Flowrail System Doctor to audit workspace semantic graph and contracts"
+  ]
+}
