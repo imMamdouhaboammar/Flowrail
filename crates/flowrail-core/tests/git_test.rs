@@ -142,6 +142,8 @@ fn test_get_head_commit_with_submodule_composite() {
 
     // Make a commit inside the submodule working directory
     let sub_dir = parent.join("modules/sub");
+    run(&sub_dir, &["config", "user.name", "Tester"]);
+    run(&sub_dir, &["config", "user.email", "test@flowrail.dev"]);
     std::fs::write(sub_dir.join("file.txt"), "hello world updated").unwrap();
     run(&sub_dir, &["add", "file.txt"]);
     run(&sub_dir, &["commit", "-m", "update inside submodule"]);
