@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/claude-plugin-manifest.json",
+  "name": "flowrail",
+  "displayName": "Flowrail",
+  "version": "0.1.2",
+  "description": "Deterministic Execution & Mutation State-Machine for AI Coding Agents. Slices codebases into isolated Business Flow Corridors, Topological Mutation Plans, and Blast-Radius Fencing via native MCP & Specialized Subagents.",
+  "author": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/Flowrail",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imMamdouhaboammar/Flowrail.git"
+  },
+  "license": "MIT",
+  "categories": [
+    "automation",
+    "developer-tools",
+    "agent-tools",
+    "code-quality",
+    "architecture"
+  ],
+  "compatibility": {
+    "claudeCode": ">=1.0.0",
+    "claudeDesktop": ">=1.0.0",
+    "codex": ">=0.1.0",
+    "opencode": ">=1.0.0",
+    "antigravity": ">=1.0.0",
+    "cursor": ">=0.40.0",
+    "windsurf": ">=1.0.0",
+    "zed": ">=0.1.0"
+  },
+  "entrypoint": "skills/flowrail/SKILL.md",
+  "mcpServers": {
+    "flowrail": {
+      "command": "flowrail",
+      "args": ["mcp"]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "flowrail",
+  "version": "0.1.2",
+  "description": "Deterministic Execution & Mutation State-Machine for AI Coding Agents. Slices codebases into isolated Business Flow Corridors, Topological Mutation Plans, and Blast-Radius Fencing via native MCP & Specialized Subagents.",
+  "author": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/Flowrail",
+  "repository": "https://github.com/imMamdouhaboammar/Flowrail",
+  "license": "MIT",
+  "keywords": [
+    "flowrail",
+    "mcp",
+    "architecture",
+    "refactoring",
+    "codebase-graph",
+    "blast-radius",
+    "ast",
+    "code-search",
+    "claude-code"
+  ],
+  "mcpServers": {
+    "flowrail": {
+      "command": "flowrail",
+      "args": ["mcp"]
+    }
+  },
+  "skills": [
+    "./skills/"
+  ],
+  "commands": [
+    "./commands/"
+  ]
+}

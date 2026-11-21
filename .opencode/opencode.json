@@ -1,0 +1,78 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "flowrail-corridor-navigator",
+  "instructions": [
+    "AGENTS.md",
+    "rules/AGENTS.md",
+    "skills/flowrail/SKILL.md",
+    "skills/flowrail-corridor/SKILL.md",
+    "skills/flowrail-mutation/SKILL.md",
+    "skills/flowrail-doctor/SKILL.md"
+  ],
+  "skills": {
+    "paths": [
+      "../skills",
+      "./skills"
+    ]
+  },
+  "mcpServers": {
+    "flowrail": {
+      "command": "flowrail",
+      "args": ["mcp"],
+      "type": "stdio"
+    }
+  },
+  "agent": {
+    "flowrail-architect": {
+      "description": "System architect and codebase graph auditor. Evaluates dependency DAG structures, PageRank hub scores, fan-in utility bottlenecks, and exports ADHD-compliant Flowrail artifacts.",
+      "mode": "subagent",
+      "tools": {
+        "read": true,
+        "bash": true,
+        "write": false,
+        "edit": false
+      }
+    },
+    "flowrail-corridor-navigator": {
+      "description": "Autonomous business flow corridor navigator and codebase explorer. Slices complex codebases into isolated execution paths without context pollution or prompt bloat, using Flowrail MCP tools.",
+      "mode": "primary",
+      "tools": {
+        "read": true,
+        "bash": true,
+        "write": true,
+        "edit": true
+      }
+    },
+    "flowrail-mutation-gatekeeper": {
+      "description": "Autonomous multi-file refactoring and contract mutation gatekeeper. Enforces topological dependency ordering, contract signature verification, and blast-radius fencing across multi-file code modifications.",
+      "mode": "subagent",
+      "tools": {
+        "read": true,
+        "bash": true,
+        "write": true,
+        "edit": true
+      }
+    }
+  },
+  "commands": {
+    "flowrail": {
+      "description": "Discover entrypoints and inspect business flow corridors",
+      "template": "Discover entrypoints and inspect business flow corridors using Flowrail: $ARGUMENTS"
+    },
+    "corridor": {
+      "description": "Open and inspect a business flow corridor",
+      "template": "Open and inspect business flow corridor for symbol: $ARGUMENTS"
+    },
+    "mutate": {
+      "description": "Plan safe topological mutation corridor and fence blast radius",
+      "template": "Plan safe topological mutation corridor for: $ARGUMENTS"
+    },
+    "doctor": {
+      "description": "Run Flowrail System Doctor to audit semantic graph and contracts",
+      "template": "Run Flowrail System Doctor to audit workspace graph health"
+    }
+  },
+  "permission": {
+    "flowrail_*": "allow"
+  }
+}

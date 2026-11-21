@@ -1,0 +1,46 @@
+{
+  "name": "flowrail",
+  "version": "0.1.2",
+  "description": "Deterministic Execution & Mutation State-Machine for AI Coding Agents",
+  "author": {
+    "name": "Mamdouh Aboammar",
+    "url": "https://github.com/imMamdouhaboammar"
+  },
+  "license": "MIT",
+  "keywords": [
+    "flowrail",
+    "codex",
+    "chatgpt",
+    "code-intelligence",
+    "refactoring",
+    "blast-radius",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Flowrail",
+    "shortDescription": "Deterministic flow slicing and mutation state-machine",
+    "longDescription": "Deterministic Execution & Mutation State-Machine for AI Coding Agents. Slices codebases into isolated Business Flow Corridors (for reading) and Topological Mutation Plans (for writing), enforcing contract verification and blast-radius fencing at every boundary gate.",
+    "developerName": "Mamdouh Aboammar",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Deterministic business flow slicing",
+      "Reverse topological mutation planning",
+      "Real-time blast radius fencing & contagion barriers",
+      "PageRank hub scoring & high-centrality detection",
+      "Typo-tolerant symbol discovery & in-memory corridor search"
+    ],
+    "websiteURL": "https://github.com/imMamdouhaboammar/Flowrail",
+    "defaultPrompt": [
+      "Discover entrypoints and inspect a business flow corridor with Flowrail.",
+      "Plan a safe topological mutation corridor and fence blast radius before modifying code.",
+      "Run Flowrail Doctor to audit codebase topology and semantic health."
+    ],
+    "brandColor": "#0F172A",
+    "brandColorDark": "#F8FAFC",
+    "composerIcon": "./assets/logo.svg",
+    "logo": "./assets/logo.svg"
+  },
+  "homepage": "https://github.com/imMamdouhaboammar/Flowrail",
+  "repository": "https://github.com/imMamdouhaboammar/Flowrail"
+}

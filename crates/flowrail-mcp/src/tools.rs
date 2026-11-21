@@ -581,12 +581,8 @@ impl CorridorMcpEngine {
             .map(|g| g.node.file_path.clone())
             .collect();
 
-        let co_changes = GitStatusResolver::find_co_changed_files(
-            &self.workspace_root,
-            &target_files,
-            100,
-            2,
-        );
+        let co_changes =
+            GitStatusResolver::find_co_changed_files(&self.workspace_root, &target_files, 100, 2);
         let co_change_paths: Vec<String> = co_changes.into_iter().map(|c| c.file_path).collect();
 
         if !co_change_paths.is_empty() && !session.plan.gates.is_empty() {
@@ -694,8 +690,11 @@ impl CorridorMcpEngine {
             })
         } else {
             let full_text = fs::read_to_string(&abs_path).unwrap_or_default();
-            let code_slice =
-                TsAstSlicer::slice_lines(&full_text, gate.node.line_range.0, gate.node.line_range.1);
+            let code_slice = TsAstSlicer::slice_lines(
+                &full_text,
+                gate.node.line_range.0,
+                gate.node.line_range.1,
+            );
 
             json!({
                 "gate_index": gate.gate_index,
@@ -787,14 +786,12 @@ impl CorridorMcpEngine {
         self.frecency.record_access(&rel_path);
         self.git_resolver.invalidate();
 
-        let post_contracts = TsAstSlicer::extract_exported_contracts(&abs_path, new_content)
-            .unwrap_or_default();
+        let post_contracts =
+            TsAstSlicer::extract_exported_contracts(&abs_path, new_content).unwrap_or_default();
         let post_hash = TsAstSlicer::compute_file_contract_hash(&abs_path, new_content)
             .unwrap_or_else(|_| "syntax_error_post_ast".to_string());
-        let contract_diff = flowrail_core::contract::ContractHasher::diff_surfaces(
-            &pre_contracts,
-            &post_contracts,
-        );
+        let contract_diff =
+            flowrail_core::contract::ContractHasher::diff_surfaces(&pre_contracts, &post_contracts);
 
         let diagnostics = TsGateVerifier::verify_gate_edit(
             &self.workspace_root,
