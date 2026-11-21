@@ -5,7 +5,7 @@ description: >
 author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>
 repository: https://github.com/imMamdouhaboammar/Flowrail
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
   engine: "flowrail-core"
   target: "TypeScript/JavaScript"
   author: Mamdouh Aboammar <mamdouhfces1997@gmail.com>

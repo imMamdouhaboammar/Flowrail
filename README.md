@@ -1,45 +1,70 @@
 # Flowrail
 
-**Experimental Preview · TypeScript · MIT**
+**Deterministic Execution & Mutation State-Machine for AI Coding Agents**
 
-Flowrail is a local Rust tool that gives an AI coding agent a focused view of a TypeScript codebase before it reads or changes code. The analysis runs without a model API.
-
-## The problem it solves
-
-Add municipal tax at checkout. The agent finds the controller, changes the tax result, and gets checkout working. Then the compiler points to an invoice generator, a subscription renewal worker, and a VAT report. All three used the same result. They were easy to miss while the agent was following the checkout flow.
-
-Flowrail produces two views from source code and a TypeScript semantic index:
-
-- **Read corridor.** Start at a controller or handler. Follow the execution path to where data is saved or returned. Skip logging and utilities. Surface the rounding helper that actually affects what a customer pays.
-- **Mutation plan.** Start at the type being changed. Walk backward through its producer, the records that store it, and the consumers in other features. Order those steps so a producer is verified before its callers are touched. Report cross-feature consumers before the first file is edited.
-
-The agent still writes the patch. Flowrail controls what the agent sees and when, so it cannot modify Gate 2 before Gate 1 compiles.
+Flowrail is a local Rust engine and Model Context Protocol (MCP) server that gives AI coding agents a focused, topologically verified slice of a codebase before they read or edit files. Slicing and contract verification run completely offline without model API calls or token burn.
 
 ---
 
-## When to use it
+## The Problem It Solves
 
-| Situation | What Flowrail does |
-| --- | --- |
-| You are changing a shared `interface` or `type` and do not know all its consumers | Builds a mutation plan ordered from the type outward; reports every file that imports it, inside and outside the active feature |
-| An agent is making a multi-file refactor and you have seen it break intermediate states before | Locks future files until the current file passes syntax verification; rolls back to a named checkpoint on failure |
-| You are reading an unfamiliar feature and want only the code that matters to the business logic | Slices a read corridor from the entry point; prunes loggers, telemetry, and high-fan-in utilities automatically |
-| You need to know the blast radius of a type change before touching anything | Runs `flowrail_open` with `intent: MUTATE_CONTRACT`; returns a contagion index and a list of external callers before any edit is proposed |
-| An agent completed a refactor and you want to verify no caller was silently skipped | Session state records which gates were verified and which repairs were acknowledged |
+Ask an AI agent to update municipal tax calculations at checkout. The agent navigates to the checkout controller, tweaks the tax structure, and gets checkout compiling. Minutes later, CI fails across an invoice generator, a subscription renewal worker, and a VAT audit job: all three depended on the same calculation result. They were invisible while the agent was focused on checkout.
 
-Flowrail is **not** useful for single-file edits, bug fixes that do not touch shared contracts, or projects not written in TypeScript.
+Standard agent tools use flat greps or raw AST dumps. These dump thousands of lines of irrelevant logger calls, telemetry spans, and utilities into the context window, causing agents to lose track of execution flow and break cross-file type contracts.
+
+Flowrail builds two complementary Directed Acyclic Graphs (DAGs) from source code and semantic indexes:
+
+- **Read Corridor:** Starts at an entry point (HTTP route, CLI command, event consumer) and traces execution down to data mutations or external calls. Automatically prunes logger, telemetry, and high-fan-in utility noise so the agent only sees domain logic.
+- **Mutation Plan:** Starts at the modified type or contract, traverses backward through producers and consumers, and orders edits in reverse topological order. Producers are verified before consumers are opened for editing, and cross-feature blast radius is surfaced before the first file is touched.
 
 ---
 
-## Install
+## When to Use Flowrail
 
-### Option A — one command from the repository
+| Scenario | What Flowrail Does |
+| :--- | :--- |
+| Changing a shared interface, schema, or type with unknown consumers | Computes a topological mutation plan; reports every caller inside and outside the active feature before editing begins. |
+| Large refactor where agents break intermediate compilation states | Locks future gates until the active gate compiles; reverts to atomic checkpoints if an approach fails. |
+| Reading an unfamiliar feature without context pollution | Slices a top-down read corridor from the entrypoint, stripping away loggers, metrics, and boilerplate utilities. |
+| Calculating blast radius before touching production code | Runs `flowrail_open` with `intent: MUTATE_CONTRACT`; returns a contagion index and list of external callers upfront. |
+| Verifying complete refactoring coverage | Tracks gate transitions and ensures every impacted caller is addressed before completing the session. |
+
+---
+
+## Multi-Harness Support
+
+Flowrail integrates out of the box with major AI coding assistants and IDEs:
+
+| Agent Harness | Configuration | Supported Surfaces |
+| :--- | :--- | :--- |
+| **Claude Code & Desktop** | `.mcp.json`, `.claude/` | MCP server, slash commands (`/flowrail`, `/corridor`, `/mutate`, `/doctor`) |
+| **OpenAI Codex** | `.codex/config.toml` | Native Codex MCP, `CODEX.md` rules |
+| **OpenCode** | `.opencode/opencode.json` | Plugin manifest, MCP server, slash commands |
+| **Cursor** | `.cursor/mcp.json` | Cursor rules (`.cursor/rules/flowrail.mdc`), MCP tools |
+| **Windsurf** | `.windsurf/mcp_config.json` | MCP configuration, `.windsurfrules` |
+| **Zed** | `.zed/settings.json` | Context server integration |
+| **VS Code / Cline** | `.vscode/mcp.json` | `cline_mcp_settings.json` |
+| **Antigravity** | `mcp_config.json`, `plugin.json` | Specialized subagents, autonomous lifecycle hooks |
+
+Initialize all harnesses in one command:
+
+```bash
+flowrail init --target all
+```
+
+Or target a specific environment: `flowrail init --target claude`, `cursor`, `codex`, `opencode`, `windsurf`, `zed`, `vscode`, or `antigravity`.
+
+---
+
+## Installation
+
+### Option A — One-line script
 
 ```bash
 ./install.sh
 ```
 
-Builds a release binary with Cargo and links it to `~/.cargo/bin/flowrail`. Requires Rust 1.75 or later. The script installs Rust via `rustup` if it is not found.
+Builds the release binary and links it to `~/.cargo/bin/flowrail`. Requires Rust 1.75+ (or installs it via `rustup` if missing).
 
 ### Option B — Cargo directly
 
@@ -47,13 +72,13 @@ Builds a release binary with Cargo and links it to `~/.cargo/bin/flowrail`. Requ
 cargo install --path crates/flowrail-cli --force
 ```
 
-### Option C — remote install (no local clone required)
+### Option C — Remote install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/main/install.sh | bash
 ```
 
-Verify the install:
+Verify your installation:
 
 ```bash
 flowrail doctor
@@ -61,150 +86,92 @@ flowrail doctor
 
 ---
 
-## Initialize a project
+## Quickstart
 
-Run once inside any TypeScript workspace:
-
-```bash
-flowrail init
-```
-
-This creates three files:
-
-| File | Used by |
-| --- | --- |
-| `.flowrail/mcp.json` | Flowrail internal config |
-| `.cursor/mcp.json` | Cursor |
-| `.mcp.json` | Claude Code, Windsurf, and any MCP-compatible client |
-
-All three contain:
-
-```json
-{
-  "mcpServers": {
-    "flowrail": {
-      "command": "flowrail",
-      "args": ["--workspace", ".", "mcp"]
-    }
-  }
-}
-```
-
-After `init`, restart your editor. Flowrail's ten MCP tools become available to any agent running in that workspace.
-
-To apply to every project without running `init` per repo, add the global config to your editor's user MCP settings pointing `--workspace` at `${workspaceFolder}`.
-
----
-
-## CLI reference
+Run the built-in demonstration on the included e-commerce fixture:
 
 ```bash
-flowrail demo                      # Run the built-in ecommerce fixture end-to-end
-flowrail doctor                    # Verify the semantic graph, AST engine, and Git cache
-flowrail search "checkout"         # Fuzzy symbol search with Git status and frecency ranking
-flowrail grep "TaxResult"          # In-memory grep, corridor-scoped or workspace-wide
-flowrail slice -e "<symbol>"       # Print a JSON corridor plan to stdout
-flowrail artifact show             # Show latest artifact JSON (.flowrail/artifacts/latest.json)
-flowrail mcp                       # Start the stdio MCP server (used by editors automatically)
+flowrail demo
 ```
 
----
-
-## MCP tools
-
-The MCP server speaks JSON-RPC 2.0 over stdio. Both `flowrail_*` and `corridor_*` prefixes are accepted.
-
-| Tool | What it does |
-| --- | --- |
-| `flowrail_discover_entrypoints` | Fuzzy search for HTTP controllers, CLI handlers, and queue consumers with Git status badges |
-| `flowrail_find_symbols` | Typo-tolerant symbol search across all AST nodes |
-| `flowrail_grep` | In-memory grep; `scope: "corridor"` restricts results to files in the active session |
-| `flowrail_open` | Opens a session with `READ_FLOW` or `MUTATE_CONTRACT` intent; unlocks Gate 0 |
-| `flowrail_inspect_gate` | Returns the source slice and blast radius report for the unlocked gate |
-| `flowrail_propose_edit` | Applies a proposed file content, checks syntax with OXC, hashes exported contracts |
-| `flowrail_advance_gate` | Verifies the active gate, locks it, and unlocks Gate N+1 |
-| `flowrail_abort_or_rollback` | Reverts files to any prior gate checkpoint |
-| `flowrail_export_artifact` | Exports the current session artifact to `.flowrail/artifacts/latest.json`; can persist to disk or return inline JSON |
-| `flowrail_enrich_artifact` | Applies validated AI enrichment to the deterministic artifact (headline_action, bounded_steps, visible_wins, error_diagnostic) with hallucination rejection |
-
-Full tool contracts: [`.agents/skills/flowrail/SKILL.md`](.agents/skills/flowrail/SKILL.md)
-
----
-
-## Agent skill
-
-The skill file at `.agents/skills/flowrail/SKILL.md` tells an agent when to invoke Flowrail and how to follow the six-step refactoring protocol. Copy it to your global skills directory so agents pick it up without project-specific configuration:
+Run an in-memory symbol search with Git status badges and frecency ranking:
 
 ```bash
-mkdir -p ~/.agents/skills/flowrail
-cp .agents/skills/flowrail/SKILL.md ~/.agents/skills/flowrail/SKILL.md
+flowrail search "checkout"
+```
+
+Run in-memory definition grep:
+
+```bash
+flowrail grep "TaxResult"
+```
+
+Start the stdio Model Context Protocol (MCP) server:
+
+```bash
+flowrail mcp
 ```
 
 ---
 
-## Agent setup prompt
+## MCP Tools Reference
 
-Paste this into any AI coding agent to have it install Flowrail, initialize it in the current project, and register the skill — using the latest published version.
+Flowrail implements 10 stateful MCP tools over JSON-RPC 2.0 stdio (accepts both `flowrail_*` and `corridor_*` prefixes):
 
-```
-You are setting up Flowrail in this project. Follow these steps exactly.
-
-1. Check whether the `flowrail` binary is on PATH:
-   - Run: `flowrail --version`
-   - If not found, install it:
-     curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/main/install.sh | bash
-     Then verify: `flowrail doctor`
-
-2. Initialize Flowrail in this workspace:
-   - Run: `flowrail init`
-   - Confirm that `.flowrail/mcp.json`, `.cursor/mcp.json`, and `.mcp.json` were created.
-
-3. Install the agent skill globally:
-   - Run:
-     mkdir -p ~/.agents/skills/flowrail
-     curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/main/.agents/skills/flowrail/SKILL.md \
-       -o ~/.agents/skills/flowrail/SKILL.md
-   - Confirm the file exists at `~/.agents/skills/flowrail/SKILL.md`.
-
-4. Run the built-in demo to confirm everything works:
-   - Run: `flowrail demo`
-   - Expected: the demo prints a read corridor and a mutation plan with contagion warnings
-     for the sample fixture. No errors.
-
-5. Report back:
-   - The output of `flowrail doctor`
-   - Which MCP config files were created and their paths
-   - The last line of `flowrail demo` output
-```
+| Tool | Purpose |
+| :--- | :--- |
+| `flowrail_discover_entrypoints` | Discovers HTTP routes, CLI handlers, and queue consumers with PageRank ranking. |
+| `flowrail_find_symbols` | Definition-first symbol search with typo-tolerant subword matching. |
+| `flowrail_grep` | In-memory definition grep; scope can be restricted to the active corridor. |
+| `flowrail_open` | Opens a session with `READ_FLOW` or `MUTATE_CONTRACT` intent; unlocks Gate 0. |
+| `flowrail_inspect_gate` | Returns the source slice, imported contracts, and blast radius for Gate $N$. |
+| `flowrail_propose_edit` | Stages edits, verifies syntax with OXC, and computes contract signature deltas. |
+| `flowrail_advance_gate` | Verifies the active gate, locks it, and unlocks Gate $N+1$. |
+| `flowrail_abort_or_rollback` | Restores files to any prior gate checkpoint. |
+| `flowrail_export_artifact` | Exports session state or architecture plans as structured JSON. |
+| `flowrail_enrich_artifact` | Applies validated AI enrichment (actionable steps, visible wins, diagnostics) with zero hallucination. |
 
 ---
 
-## Try the preview
+## Expanding Beyond TypeScript: Multi-Language Roadmap
 
-```sh
-cargo test --workspace --locked
-cargo run --locked -p flowrail-cli -- \
-  --workspace fixtures/sample-ts-ecommerce slice \
-  --entry 'src/modules/checkout/checkout.controller.ts#CheckoutController' \
-  --intent READ_FLOW
-```
+Flowrail's core graph engine (`flowrail-core`) is completely language-agnostic. While our first bridge (`flowrail-ts-bridge`) targets TypeScript via SCIP and OXC, we are actively expanding Flowrail to support other programming ecosystems.
 
-The command returns a JSON corridor plan from the sample fixture using the AST fallback. The [ecommerce benchmark](docs/Flowrail-Full-Specs/05-ecommerce-benchmark.md) describes the known results: adding an optional field typechecks cleanly; splitting `taxAmountCents` into two required fields produces four diagnostics across invoicing, renewals, and reporting.
+We are calling for community contributors to build and maintain language bridges:
+
+- **Python (`flowrail-python-bridge`):** Cross-file symbol extraction via `scip-python` / LSP (`basedpyright` / `pyright`), fast AST slicing and type signature hashing via Rust-based Python parsers (Ruff/AST), slicing through FastAPI, Django, Flask, and Celery flows.
+- **Rust (`flowrail-rust-bridge`):** Call graphs and trait definitions via `rust-analyzer` SCIP, fast AST slicing with `syn`, and slicing through `tokio`, `actix-web`, and `axum`.
+- **Go (`flowrail-go-bridge`):** Slicing via `scip-go` or `gopls`, interface matching, and struct contract hashing for Gin, Echo, Fiber, and gRPC services.
+- **Java / Kotlin / C#:** Enterprise graph slicing via SCIP language indexers.
+
+If you are interested in building or testing a language bridge, check out our [Contributing Guide](CONTRIBUTING.md) to get started.
 
 ---
 
-## Where to look next
+## Community, Testing & Bug Reports
 
-| Path | What's there |
-| --- | --- |
-| [Story.md](Story.md) | Why I started Flowrail and where I'd use it |
-| [Full specifications](docs/Flowrail-Full-Specs/README.md) | Product scope, architecture, tool contracts, and acceptance tests |
-| [Viability and release criteria](docs/Flowrail-Full-Specs/10-viability-and-release.md) | What we've observed, what still needs proof, and how we'll judge the MVP |
-| [`flowrail-core`](crates/flowrail-core/) | Dependency graph, slicing, contract comparison, and session state |
-| [`flowrail-ts-bridge`](crates/flowrail-ts-bridge/) | TypeScript analysis with SCIP and OXC |
-| [`flowrail-cli`](crates/flowrail-cli/) and [`flowrail-mcp`](crates/flowrail-mcp/) | Command-line and stdio MCP interfaces |
-| [Fixtures](fixtures/) | Small source fixture used by the Rust integration tests |
+We want developers to run Flowrail on real repositories and stress-test it against diverse code patterns:
 
-A useful issue includes a small TypeScript example, the command you ran, and a relationship Flowrail missed or got wrong. See [Contributing](CONTRIBUTING.md) for local checks and [Security](SECURITY.md) for private reports.
+- **Try it on your codebase:** Run `flowrail doctor` and `flowrail init --target all` on your projects. Test corridor navigation and refactoring loops with your AI agent.
+- **Report bugs and edge cases:** Found a missed dependency, an inaccurate blast radius, a path alias resolution bug, or a circular dependency issue? Please [open an issue](https://github.com/imMamdouhaboammar/Flowrail/issues) with a minimal reproducing fixture.
+- **System performance & optimization:** Help us optimize graph traversal times, dominator tree calculations, memory footprints, and MCP responsiveness.
 
-[MIT License](LICENSE)
+---
+
+## Repository Layout
+
+| Path | Purpose |
+| :--- | :--- |
+| [`crates/flowrail-core`](crates/flowrail-core/) | Graph models, DAG algorithms (petgraph), pruning heuristics, contract hashing (blake3) |
+| [`crates/flowrail-ts-bridge`](crates/flowrail-ts-bridge/) | TypeScript semantic extraction via SCIP and OXC AST slicing |
+| [`crates/flowrail-mcp`](crates/flowrail-mcp/) | Stateful Model Context Protocol server over tokio |
+| [`crates/flowrail-cli`](crates/flowrail-cli/) | CLI binary driver (`flowrail init`, `doctor`, `demo`, `search`, `grep`, `mcp`) |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution guide, multi-language bridge specs, and development workflow |
+| [`docs/solutions/`](docs/solutions/) | Codified engineering learnings and architectural decisions |
+| [`fixtures/`](fixtures/) | Multi-module test fixtures for integration benchmarks |
+
+---
+
+## License
+
+[MIT](LICENSE) © Mamdouh Aboammar
