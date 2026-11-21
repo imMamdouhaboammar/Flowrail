@@ -1,6 +1,6 @@
 {
-  "name": "flowrail",
-  "version": "0.1.0",
+  "name": "@mamdouh-aboammar/flowrail",
+  "version": "0.1.2",
   "description": "Flowrail (Project Ariadne): Deterministic Execution & Mutation State-Machine for AI Coding Agents",
   "author": "Mamdouh Aboammar <mamdouhfces1997@gmail.com>",
   "license": "MIT",
@@ -19,7 +19,11 @@
     "ai-agents",
     "cursor",
     "claude-code",
-    "antigravity"
+    "antigravity",
+    "codex",
+    "opencode",
+    "windsurf",
+    "zed"
   ],
   "bin": {
     "flowrail": "./bin/flowrail"
@@ -35,5 +39,8 @@
   },
   "engines": {
     "bun": ">=1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
