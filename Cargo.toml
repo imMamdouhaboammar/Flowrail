@@ -36,11 +36,11 @@ petgraph = { version = "0.8", features = ["serde-1"] }
 indexmap = { version = "2.6", features = ["serde"] }
 
 # Fast AST Slicing & Signature Hashing for TypeScript
-oxc_allocator = "0.38"
-oxc_parser = "0.38"
-oxc_ast = "0.38"
-oxc_span = "0.38"
-oxc_semantic = "0.38"
+oxc_allocator = "0.159"
+oxc_parser = "0.159"
+oxc_ast = "0.159"
+oxc_span = "0.159"
+oxc_semantic = "0.159"
 
 # SCIP Protobuf Ingestion (Cross-file Type Resolution)
 scip = "0.10"
