@@ -77,7 +77,10 @@ temp/
 # Operating System Files
 .DS_Store
 .DS_Store?
+**/.DS_Store
+**/.DS_Store?
 ._*
+**/._*
 .Spotlight-V100
 .Trashes
 Thumbs.db
@@ -107,6 +110,8 @@ $RECYCLE.BIN/
 \#*\#
 *.sublime-project
 *.sublime-workspace
+.fleet/
+.zed/settings.local.json
 
 # Logs, Dumps & SQLite Runtime Journals
 *.log
@@ -128,6 +133,10 @@ __pycache__/
 
 # Local & Private Overrides
 *.local
+*.local.json
+*.override.json
+mcp_config.local.json
+cline_mcp_settings.local.json
 private/
 local/
 

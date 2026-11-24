@@ -73,7 +73,7 @@ def setup_codex(root_dir: Path):
     home = Path.home()
     codex_dir = home / ".codex"
     print("\n--- [2/5] Configuring OpenAI Codex ---")
-    if codex_dir.exists() or Path("/Users/mamdouhaboammar/.codex").exists():
+    if codex_dir.exists():
         plugins_dir = codex_dir / "plugins"
         skills_dir = codex_dir / "skills"
         link_safe(root_dir, plugins_dir / "flowrail", "Codex Plugin")

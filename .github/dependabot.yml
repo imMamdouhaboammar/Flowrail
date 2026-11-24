@@ -8,6 +8,9 @@ updates:
       oxc:
         patterns:
           - "oxc*"
+    ignore:
+      - dependency-name: "oxc*"
+        versions: ["> 0.38.0"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
