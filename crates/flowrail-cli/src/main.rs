@@ -836,14 +836,36 @@ fn parse_slice_intent(intent: &str) -> Result<SliceIntent> {
     }
 }
 
+fn resolve_git_exclude_path(workspace: &std::path::Path) -> Option<PathBuf> {
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--git-path", "info/exclude"])
+        .current_dir(workspace)
+        .output()
+        && output.status.success()
+    {
+        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !raw.is_empty() {
+            let p = PathBuf::from(raw);
+            return Some(if p.is_absolute() {
+                p
+            } else {
+                workspace.join(p)
+            });
+        }
+    }
+    if workspace.join(".git").is_dir() {
+        return Some(workspace.join(".git/info/exclude"));
+    }
+    None
+}
+
 fn ensure_git_ignore_entries(workspace: &std::path::Path) {
     let entries = [".flowrail/", ".corridor/"];
     let gitignore_path = workspace.join(".gitignore");
-    let exclude_path = workspace.join(".git/info/exclude");
 
     let target_path = if gitignore_path.exists() {
         gitignore_path
-    } else if workspace.join(".git").is_dir() {
+    } else if let Some(exclude_path) = resolve_git_exclude_path(workspace) {
         if let Some(parent) = exclude_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -852,7 +874,18 @@ fn ensure_git_ignore_entries(workspace: &std::path::Path) {
         return;
     };
 
-    let existing = std::fs::read_to_string(&target_path).unwrap_or_default();
+    let existing = match std::fs::read_to_string(&target_path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(err) => {
+            eprintln!(
+                "  [WARN] Skipping ignore update for {} ({})",
+                target_path.display(),
+                err
+            );
+            return;
+        }
+    };
     let existing_lines: Vec<&str> = existing.lines().map(str::trim).collect();
     let missing: Vec<&str> = entries
         .iter()
