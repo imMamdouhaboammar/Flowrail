@@ -301,7 +301,6 @@ fn test_mutation_dag_diamond_topological_ordering() {
     assert_eq!(plan.gates[2].node.symbol_id, ctrl.symbol_id);
 }
 
-
 #[test]
 fn test_slicer_suggests_trailing_dot_when_missing() {
     let mut graph = flowrail_core::graph::CodebaseGraph::new();

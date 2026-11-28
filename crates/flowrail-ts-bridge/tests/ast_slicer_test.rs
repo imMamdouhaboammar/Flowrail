@@ -105,7 +105,6 @@ export class TaxCalculator {
     );
 }
 
-
 #[test]
 fn test_ast_slicer_extracts_method_level_line_ranges() {
     let source = r#"export class SendLedger {
@@ -127,7 +126,10 @@ fn test_ast_slicer_extracts_method_level_line_ranges() {
     )
     .expect("analyze_file should succeed");
 
-    let cls = symbols.iter().find(|s| s.name == "SendLedger").expect("class symbol");
+    let cls = symbols
+        .iter()
+        .find(|s| s.name == "SendLedger")
+        .expect("class symbol");
     let accepted = symbols
         .iter()
         .find(|s| s.name == "SendLedger.accepted")
