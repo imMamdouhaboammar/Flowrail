@@ -540,3 +540,92 @@ fn test_mcp_borrowed_patterns_confidence_detail_level_and_def_first() {
 
     let _ = fs::remove_dir_all(temp_dir);
 }
+
+
+#[test]
+fn test_propose_edit_dry_run_targeted_edits_diff_and_diagnostics_scope() {
+    let temp_dir =
+        std::env::temp_dir().join(format!("flowrail_mcp_dry_run_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(temp_dir.join("src")).unwrap();
+
+    let original = "export function greet(name: string): string {\n    return name;\n}\n";
+    let target_file = temp_dir.join("src/greet.ts");
+    fs::write(&target_file, original).unwrap();
+
+    let mut graph = CodebaseGraph::new();
+    graph.upsert_node(SemanticNode {
+        symbol_id: "src/greet.ts#greet".to_string(),
+        display_name: "greet".to_string(),
+        file_path: "src/greet.ts".to_string(),
+        byte_range: (0, original.len()),
+        line_range: (1, 3),
+        role: NodeRole::EntryGate,
+        signature_hash: "h1".to_string(),
+        mutates_domain_state: false,
+        is_exported: true,
+    });
+
+    let mut engine = CorridorMcpEngine::new(temp_dir.clone(), graph, false);
+    engine
+        .dispatch_tool(
+            "flowrail_open",
+            &json!({
+                "entry_symbol": "src/greet.ts#greet",
+                "intent": "READ_FLOW"
+            }),
+        )
+        .unwrap();
+
+    // 1. Dry-run with targeted edits[] must NOT mutate disk
+    let dry_res = engine
+        .dispatch_tool(
+            "flowrail_propose_edit",
+            &json!({
+                "gate_index": 0,
+                "dry_run": true,
+                "edits": [
+                    {
+                        "old_text": "greet(name: string)",
+                        "new_text": "greet(name: string, title: string)"
+                    }
+                ]
+            }),
+        )
+        .unwrap();
+    let dry_json: Value = serde_json::from_str(&dry_res).unwrap();
+    assert_eq!(dry_json["dry_run"], true);
+    assert_eq!(dry_json["is_breaking"], true);
+    assert_eq!(dry_json["typecheck_ran"], false);
+    assert_eq!(dry_json["diagnostics_scope"], "syntax_only");
+    assert!(dry_json["warning"].as_str().unwrap().contains("typecheck_ran=false"));
+    assert!(dry_json["diff"].as_str().unwrap().contains("+export function greet(name: string, title: string): string {"));
+    assert_eq!(
+        fs::read_to_string(&target_file).unwrap(),
+        original,
+        "dry_run must not write to disk"
+    );
+
+    // 2. Non-dry-run with targeted edits[] must apply to disk
+    let apply_res = engine
+        .dispatch_tool(
+            "flowrail_propose_edit",
+            &json!({
+                "gate_index": 0,
+                "edits": [
+                    {
+                        "old_text": "greet(name: string)",
+                        "new_text": "greet(name: string, title: string)"
+                    }
+                ]
+            }),
+        )
+        .unwrap();
+    let apply_json: Value = serde_json::from_str(&apply_res).unwrap();
+    assert_eq!(apply_json["dry_run"], false);
+    assert!(fs::read_to_string(&target_file)
+        .unwrap()
+        .contains("title: string"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

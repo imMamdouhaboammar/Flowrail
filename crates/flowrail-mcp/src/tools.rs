@@ -188,13 +188,25 @@ impl CorridorMcpEngine {
                 },
                 {
                     "name": "corridor_propose_edit",
-                    "description": "Applies an edit to the active gate, hashes exported TypeScript contracts to detect mutations, and runs syntax/type diagnostics.",
+                    "description": "Previews (dry_run) or applies an edit to the active gate via new_file_content or targeted edits[], returns a unified diff, hashes exported TypeScript contracts, and reports diagnostics with scope.",
                     "inputSchema": {
                         "type": "object",
-                        "required": ["gate_index", "new_file_content"],
+                        "required": ["gate_index"],
                         "properties": {
                             "gate_index": { "type": "integer" },
                             "new_file_content": { "type": "string" },
+                            "edits": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["old_text", "new_text"],
+                                    "properties": {
+                                        "old_text": { "type": "string" },
+                                        "new_text": { "type": "string" }
+                                    }
+                                }
+                            },
+                            "dry_run": { "type": "boolean", "default": false },
                             "acknowledge_blast_radius": { "type": "boolean", "default": false }
                         }
                     }
@@ -204,10 +216,22 @@ impl CorridorMcpEngine {
                     "description": "Alias for corridor_propose_edit",
                     "inputSchema": {
                         "type": "object",
-                        "required": ["gate_index", "new_file_content"],
+                        "required": ["gate_index"],
                         "properties": {
                             "gate_index": { "type": "integer" },
                             "new_file_content": { "type": "string" },
+                            "edits": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["old_text", "new_text"],
+                                    "properties": {
+                                        "old_text": { "type": "string" },
+                                        "new_text": { "type": "string" }
+                                    }
+                                }
+                            },
+                            "dry_run": { "type": "boolean", "default": false },
                             "acknowledge_blast_radius": { "type": "boolean", "default": false }
                         }
                     }
@@ -733,10 +757,10 @@ impl CorridorMcpEngine {
             .and_then(|v| v.as_u64())
             .ok_or_else(|| anyhow!("Missing gate_index"))? as usize;
 
-        let new_content = args
-            .get("new_file_content")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("Missing new_file_content"))?;
+        let dry_run = args
+            .get("dry_run")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let ack_blast = args
             .get("acknowledge_blast_radius")
@@ -767,28 +791,30 @@ impl CorridorMcpEngine {
         }
 
         let rel_path = gate.node.file_path.clone();
+        let impacted_callers: Vec<String> = gate.blast_radius.external_dependents.iter().map(|d| d.symbol_id.clone()).collect();
         let abs_path = self.workspace_root.join(&rel_path);
         let (original_content, file_existed_originally) =
             session.get_or_snapshot_file(gate_index, &rel_path);
+        let current_disk_content = fs::read_to_string(&abs_path).unwrap_or_else(|_| original_content.clone());
+
+        let new_content = if let Some(full) = args.get("new_file_content").and_then(|v| v.as_str()) {
+            full.to_string()
+        } else if let Some(edits) = args.get("edits").and_then(|v| v.as_array()) {
+            apply_targeted_edits(&current_disk_content, edits)?
+        } else {
+            return Err(anyhow!("Missing new_file_content or edits"));
+        };
+
+        let unified_diff = compute_unified_diff(&rel_path, &current_disk_content, &new_content);
 
         let pre_contracts = TsAstSlicer::extract_exported_contracts(&abs_path, &original_content)
             .unwrap_or_default();
         let pre_hash = TsAstSlicer::compute_file_contract_hash(&abs_path, &original_content)
             .unwrap_or_else(|_| "invalid_pre_ast".to_string());
 
-        // Write proposed edit to working tree
-        if let Some(parent) = abs_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&abs_path, new_content)?;
-
-        // Record frecency and invalidate git cache
-        self.frecency.record_access(&rel_path);
-        self.git_resolver.invalidate();
-
         let post_contracts =
-            TsAstSlicer::extract_exported_contracts(&abs_path, new_content).unwrap_or_default();
-        let post_hash = TsAstSlicer::compute_file_contract_hash(&abs_path, new_content)
+            TsAstSlicer::extract_exported_contracts(&abs_path, &new_content).unwrap_or_default();
+        let post_hash = TsAstSlicer::compute_file_contract_hash(&abs_path, &new_content)
             .unwrap_or_else(|_| "syntax_error_post_ast".to_string());
         let contract_diff =
             flowrail_core::contract::ContractHasher::diff_surfaces(&pre_contracts, &post_contracts);
@@ -796,15 +822,62 @@ impl CorridorMcpEngine {
         let diagnostics = TsGateVerifier::verify_gate_edit(
             &self.workspace_root,
             &rel_path,
-            new_content,
-            self.run_tsc_on_advance,
+            &new_content,
+            if dry_run { false } else { self.run_tsc_on_advance },
         )?;
+        let typecheck_ran = !dry_run && self.run_tsc_on_advance;
+        let diagnostics_scope = if typecheck_ran {
+            "syntax_and_tsc"
+        } else {
+            "syntax_only"
+        };
+        let typecheck_warning = if contract_diff.is_breaking && !typecheck_ran {
+            Some(
+                "Breaking contract change detected while typecheck_ran=false (syntax-only mode). Verify downstream callers or run `tsc --noEmit`."
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+
+        if dry_run {
+            return Ok(serde_json::to_string_pretty(&json!({
+                "gate_index": gate_index,
+                "file_path": rel_path,
+                "dry_run": true,
+                "diff": unified_diff,
+                "contract_mutated": pre_hash != post_hash,
+                "contract_delta_kind": contract_diff.delta_kind,
+                "is_breaking": contract_diff.is_breaking,
+                "breaking_reasons": contract_diff.breaking_reasons,
+                "impacted_callers": impacted_callers,
+                "pre_contract_hash": pre_hash,
+                "post_contract_hash": post_hash,
+                "syntax_clean": diagnostics.is_empty(),
+                "typecheck_ran": false,
+                "diagnostics_scope": "syntax_only",
+                "diagnostics_clean": diagnostics.is_empty(),
+                "diagnostics": diagnostics,
+                "warning": typecheck_warning,
+                "next_step": "Re-run `corridor_propose_edit` with `dry_run: false` to apply this edit to disk."
+            }))?);
+        }
+
+        // Write proposed edit to working tree
+        if let Some(parent) = abs_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&abs_path, &new_content)?;
+
+        // Record frecency and invalidate git cache
+        self.frecency.record_access(&rel_path);
+        self.git_resolver.invalidate();
 
         session.record_proposed_edit(
             gate_index,
             original_content,
             file_existed_originally,
-            new_content.to_string(),
+            new_content,
             pre_hash.clone(),
             post_hash.clone(),
             diagnostics.clone(),
@@ -820,14 +893,21 @@ impl CorridorMcpEngine {
         Ok(serde_json::to_string_pretty(&json!({
             "gate_index": gate_index,
             "file_path": rel_path,
+            "dry_run": false,
+            "diff": unified_diff,
             "contract_mutated": pre_hash != post_hash,
             "contract_delta_kind": contract_diff.delta_kind,
             "is_breaking": contract_diff.is_breaking,
             "breaking_reasons": contract_diff.breaking_reasons,
+            "impacted_callers": impacted_callers,
             "pre_contract_hash": pre_hash,
             "post_contract_hash": post_hash,
+            "syntax_clean": diagnostics.is_empty(),
+            "typecheck_ran": typecheck_ran,
+            "diagnostics_scope": diagnostics_scope,
             "diagnostics_clean": diagnostics.is_empty(),
             "diagnostics": diagnostics,
+            "warning": typecheck_warning,
             "artifact_id": artifact.artifact_id,
             "artifact_file": artifact_path.map(|p| p.to_string_lossy().to_string()),
             "next_step": if diagnostics.is_empty() {
@@ -953,4 +1033,76 @@ impl CorridorMcpEngine {
             "clean_json_artifact": artifact
         }))?)
     }
+}
+
+
+fn apply_targeted_edits(original: &str, edits: &[Value]) -> Result<String> {
+    let mut updated = original.to_string();
+    for (idx, edit) in edits.iter().enumerate() {
+        let old_text = edit
+            .get("old_text")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Edit {} missing old_text", idx))?;
+        let new_text = edit
+            .get("new_text")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Edit {} missing new_text", idx))?;
+        let matches = updated.matches(old_text).count();
+        if matches == 0 {
+            return Err(anyhow!("Edit {} old_text not found in file", idx));
+        }
+        if matches > 1 {
+            return Err(anyhow!(
+                "Edit {} old_text matched {} times; provide more surrounding context",
+                idx,
+                matches
+            ));
+        }
+        updated = updated.replacen(old_text, new_text, 1);
+    }
+    Ok(updated)
+}
+
+fn compute_unified_diff(file_path: &str, before: &str, after: &str) -> String {
+    if before == after {
+        return String::new();
+    }
+    let before_lines: Vec<&str> = before.lines().collect();
+    let after_lines: Vec<&str> = after.lines().collect();
+    let mut prefix = 0;
+    while prefix < before_lines.len()
+        && prefix < after_lines.len()
+        && before_lines[prefix] == after_lines[prefix]
+    {
+        prefix += 1;
+    }
+    let mut suffix = 0;
+    while suffix < before_lines.len().saturating_sub(prefix)
+        && suffix < after_lines.len().saturating_sub(prefix)
+        && before_lines[before_lines.len() - 1 - suffix]
+            == after_lines[after_lines.len() - 1 - suffix]
+    {
+        suffix += 1;
+    }
+    let b_end = before_lines.len().saturating_sub(suffix);
+    let a_end = after_lines.len().saturating_sub(suffix);
+    let mut out = format!("--- a/{}\n+++ b/{}\n@@ -{},{} +{},{} @@\n",
+        file_path,
+        file_path,
+        prefix + 1,
+        b_end.saturating_sub(prefix),
+        prefix + 1,
+        a_end.saturating_sub(prefix),
+    );
+    for line in &before_lines[prefix..b_end] {
+        out.push('-');
+        out.push_str(line);
+        out.push('\n');
+    }
+    for line in &after_lines[prefix..a_end] {
+        out.push('+');
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
