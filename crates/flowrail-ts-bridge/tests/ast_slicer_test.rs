@@ -25,7 +25,7 @@ export class OrderService {
 
     let path = Path::new("test.ts");
     let symbols = TsAstSlicer::analyze_file(path, ts_code).expect("Should parse TS symbols");
-    assert_eq!(symbols.len(), 4);
+    assert_eq!(symbols.len(), 5);
 
     let iface = symbols
         .iter()
@@ -103,4 +103,42 @@ export class TaxCalculator {
             .modified_symbols
             .contains(&"TaxCalculator".to_string())
     );
+}
+
+
+#[test]
+fn test_ast_slicer_extracts_method_level_line_ranges() {
+    let source = r#"export class SendLedger {
+    private count = 0;
+
+    accepted(id: string): boolean {
+        this.count += 1;
+        return id.length > 0;
+    }
+
+    rejected(id: string): boolean {
+        return id.isEmpty;
+    }
+}
+"#;
+    let symbols = flowrail_ts_bridge::ast_slicer::TsAstSlicer::analyze_file(
+        std::path::Path::new("src/send-ledger.ts"),
+        source,
+    )
+    .expect("analyze_file should succeed");
+
+    let cls = symbols.iter().find(|s| s.name == "SendLedger").expect("class symbol");
+    let accepted = symbols
+        .iter()
+        .find(|s| s.name == "SendLedger.accepted")
+        .expect("accepted method symbol");
+    let rejected = symbols
+        .iter()
+        .find(|s| s.name == "SendLedger.rejected")
+        .expect("rejected method symbol");
+
+    assert_eq!(cls.line_range, (1, 12));
+    assert_eq!(accepted.line_range, (4, 7));
+    assert_eq!(rejected.line_range, (9, 11));
+    assert!(accepted.line_range.1 < cls.line_range.1);
 }

@@ -110,10 +110,38 @@ impl CorridorSlicer {
         config: &PruningConfig,
     ) -> Result<CorridorPlan> {
         let entry_idx = graph.resolve_symbol(entry_symbol).ok_or_else(|| {
-            anyhow!(
-                "Entry symbol '{}' not found in semantic graph",
-                entry_symbol
-            )
+            let dot_candidate = format!("{}.", entry_symbol);
+            if graph.resolve_symbol(&dot_candidate).is_some() {
+                anyhow!(
+                    "Entry symbol '{}' not found in semantic graph. Did you mean '{}'?",
+                    entry_symbol,
+                    dot_candidate
+                )
+            } else {
+                let mut suggestions: Vec<String> = graph
+                    .graph
+                    .node_weights()
+                    .filter(|n| {
+                        n.symbol_id.contains(entry_symbol)
+                            || n.display_name.eq_ignore_ascii_case(entry_symbol)
+                    })
+                    .map(|n| n.symbol_id.clone())
+                    .take(3)
+                    .collect();
+                suggestions.sort();
+                if suggestions.is_empty() {
+                    anyhow!(
+                        "Entry symbol '{}' not found in semantic graph",
+                        entry_symbol
+                    )
+                } else {
+                    anyhow!(
+                        "Entry symbol '{}' not found in semantic graph. Similar symbols: {}",
+                        entry_symbol,
+                        suggestions.join(", ")
+                    )
+                }
+            }
         })?;
 
         let canonical_entry = graph.graph[entry_idx].symbol_id.clone();
