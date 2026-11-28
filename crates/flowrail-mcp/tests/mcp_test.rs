@@ -541,7 +541,6 @@ fn test_mcp_borrowed_patterns_confidence_detail_level_and_def_first() {
     let _ = fs::remove_dir_all(temp_dir);
 }
 
-
 #[test]
 fn test_propose_edit_dry_run_targeted_edits_diff_and_diagnostics_scope() {
     let temp_dir =
@@ -598,8 +597,18 @@ fn test_propose_edit_dry_run_targeted_edits_diff_and_diagnostics_scope() {
     assert_eq!(dry_json["is_breaking"], true);
     assert_eq!(dry_json["typecheck_ran"], false);
     assert_eq!(dry_json["diagnostics_scope"], "syntax_only");
-    assert!(dry_json["warning"].as_str().unwrap().contains("typecheck_ran=false"));
-    assert!(dry_json["diff"].as_str().unwrap().contains("+export function greet(name: string, title: string): string {"));
+    assert!(
+        dry_json["warning"]
+            .as_str()
+            .unwrap()
+            .contains("typecheck_ran=false")
+    );
+    assert!(
+        dry_json["diff"]
+            .as_str()
+            .unwrap()
+            .contains("+export function greet(name: string, title: string): string {")
+    );
     assert_eq!(
         fs::read_to_string(&target_file).unwrap(),
         original,
@@ -623,9 +632,11 @@ fn test_propose_edit_dry_run_targeted_edits_diff_and_diagnostics_scope() {
         .unwrap();
     let apply_json: Value = serde_json::from_str(&apply_res).unwrap();
     assert_eq!(apply_json["dry_run"], false);
-    assert!(fs::read_to_string(&target_file)
-        .unwrap()
-        .contains("title: string"));
+    assert!(
+        fs::read_to_string(&target_file)
+            .unwrap()
+            .contains("title: string")
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

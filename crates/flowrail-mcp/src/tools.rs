@@ -791,13 +791,20 @@ impl CorridorMcpEngine {
         }
 
         let rel_path = gate.node.file_path.clone();
-        let impacted_callers: Vec<String> = gate.blast_radius.external_dependents.iter().map(|d| d.symbol_id.clone()).collect();
+        let impacted_callers: Vec<String> = gate
+            .blast_radius
+            .external_dependents
+            .iter()
+            .map(|d| d.symbol_id.clone())
+            .collect();
         let abs_path = self.workspace_root.join(&rel_path);
         let (original_content, file_existed_originally) =
             session.get_or_snapshot_file(gate_index, &rel_path);
-        let current_disk_content = fs::read_to_string(&abs_path).unwrap_or_else(|_| original_content.clone());
+        let current_disk_content =
+            fs::read_to_string(&abs_path).unwrap_or_else(|_| original_content.clone());
 
-        let new_content = if let Some(full) = args.get("new_file_content").and_then(|v| v.as_str()) {
+        let new_content = if let Some(full) = args.get("new_file_content").and_then(|v| v.as_str())
+        {
             full.to_string()
         } else if let Some(edits) = args.get("edits").and_then(|v| v.as_array()) {
             apply_targeted_edits(&current_disk_content, edits)?
@@ -823,7 +830,11 @@ impl CorridorMcpEngine {
             &self.workspace_root,
             &rel_path,
             &new_content,
-            if dry_run { false } else { self.run_tsc_on_advance },
+            if dry_run {
+                false
+            } else {
+                self.run_tsc_on_advance
+            },
         )?;
         let typecheck_ran = !dry_run && self.run_tsc_on_advance;
         let diagnostics_scope = if typecheck_ran {
@@ -1035,7 +1046,6 @@ impl CorridorMcpEngine {
     }
 }
 
-
 fn apply_targeted_edits(original: &str, edits: &[Value]) -> Result<String> {
     let mut updated = original.to_string();
     for (idx, edit) in edits.iter().enumerate() {
@@ -1086,7 +1096,8 @@ fn compute_unified_diff(file_path: &str, before: &str, after: &str) -> String {
     }
     let b_end = before_lines.len().saturating_sub(suffix);
     let a_end = after_lines.len().saturating_sub(suffix);
-    let mut out = format!("--- a/{}\n+++ b/{}\n@@ -{},{} +{},{} @@\n",
+    let mut out = format!(
+        "--- a/{}\n+++ b/{}\n@@ -{},{} +{},{} @@\n",
         file_path,
         file_path,
         prefix + 1,
