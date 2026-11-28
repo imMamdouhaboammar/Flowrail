@@ -239,3 +239,55 @@ fn test_cli_artifact_lifecycle() {
     assert!(val_stdout.contains("ADHD Constraints"));
     assert!(val_stdout.contains("Anti-Slop Discipline"));
 }
+
+#[test]
+fn test_cli_slice_rejects_invalid_intent() {
+    let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("fixtures/sample-ts-ecommerce");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_flowrail"))
+        .arg("--workspace")
+        .arg(fixture_dir.to_str().unwrap())
+        .arg("slice")
+        .arg("--entry")
+        .arg("src/modules/checkout/checkout.controller.ts#CheckoutController")
+        .arg("--intent")
+        .arg("EDIT_FLOW")
+        .output()
+        .expect("flowrail slice should run");
+
+    assert!(!output.status.success(), "unknown intent must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Invalid intent 'EDIT_FLOW'"),
+        "expected invalid intent error, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_cli_init_updates_gitignore_idempotently() {
+    let guard = TempDirGuard::new("flowrail_gitignore_test");
+    let temp_dir = guard.path();
+    std::fs::write(temp_dir.join(".gitignore"), "node_modules/\n").unwrap();
+
+    for _ in 0..2 {
+        let output = Command::new(env!("CARGO_BIN_EXE_flowrail"))
+            .arg("--workspace")
+            .arg(temp_dir.to_str().unwrap())
+            .arg("init")
+            .arg("--target")
+            .arg("claude")
+            .output()
+            .expect("flowrail init should run");
+        assert!(output.status.success());
+    }
+
+    let gitignore = std::fs::read_to_string(temp_dir.join(".gitignore")).unwrap();
+    assert_eq!(gitignore.matches(".flowrail/").count(), 1);
+    assert_eq!(gitignore.matches(".corridor/").count(), 1);
+}
