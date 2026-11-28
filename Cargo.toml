@@ -48,7 +48,7 @@ protobuf = "3.7"
 
 # State Persistence & Git Checkpoints
 rusqlite = { version = "0.43", features = ["bundled"] }
-git2 = "0.20"
+git2 = { version = "0.20", default-features = false }
 blake3 = "1.5"
 regex = "1.10"
 
