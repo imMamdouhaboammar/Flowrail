@@ -52,13 +52,21 @@ Initialize all harnesses in one command:
 flowrail init --target all
 ```
 
-Or target a specific environment: `flowrail init --target claude`, `cursor`, `codex`, `opencode`, `windsurf`, `zed`, `vscode`, or `antigravity`.
+Or target a specific environment: `flowrail init --target claude`, `cursor`, `codex`, `opencode`, `windsurf`, `zed`, `vscode`, or `antigravity`. `flowrail init` automatically adds `.flowrail/` and `.corridor/` to `.gitignore` (or `.git/info/exclude`).
 
 ---
 
 ## Installation
 
-### Option A — One-line script
+### Option A — npm / Bun
+
+```bash
+npm install -g @mamdouh-aboammar/flowrail
+# or
+bun add -g @mamdouh-aboammar/flowrail
+```
+
+### Option B — One-line script
 
 ```bash
 ./install.sh
@@ -66,13 +74,13 @@ Or target a specific environment: `flowrail init --target claude`, `cursor`, `co
 
 Builds the release binary and links it to `~/.cargo/bin/flowrail`. Requires Rust 1.75+ (or installs it via `rustup` if missing).
 
-### Option B — Cargo directly
+### Option C — Cargo directly
 
 ```bash
 cargo install --path crates/flowrail-cli --force
 ```
 
-### Option C — Remote install
+### Option D — Remote install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/imMamdouhaboammar/Flowrail/main/install.sh | bash
@@ -125,7 +133,7 @@ Flowrail implements 10 stateful MCP tools over JSON-RPC 2.0 stdio (accepts both 
 | `flowrail_grep` | In-memory definition grep; scope can be restricted to the active corridor. |
 | `flowrail_open` | Opens a session with `READ_FLOW` or `MUTATE_CONTRACT` intent; unlocks Gate 0. |
 | `flowrail_inspect_gate` | Returns the source slice, imported contracts, and blast radius for Gate $N$. |
-| `flowrail_propose_edit` | Stages edits, verifies syntax with OXC, and computes contract signature deltas. |
+| `flowrail_propose_edit` | Previews (`dry_run`) or applies `new_file_content` / targeted `edits[]`, returns a unified `diff`, computes contract deltas, and reports `syntax_clean` + `diagnostics_scope`. |
 | `flowrail_advance_gate` | Verifies the active gate, locks it, and unlocks Gate $N+1$. |
 | `flowrail_abort_or_rollback` | Restores files to any prior gate checkpoint. |
 | `flowrail_export_artifact` | Exports session state or architecture plans as structured JSON. |

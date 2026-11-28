@@ -1,6 +1,6 @@
 {
   "name": "@mamdouh-aboammar/flowrail",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Flowrail (Project Ariadne): Deterministic Execution & Mutation State-Machine for AI Coding Agents",
   "author": "Mamdouh Aboammar <mamdouhfces1997@gmail.com>",
   "license": "MIT",
