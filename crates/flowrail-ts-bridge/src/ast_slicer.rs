@@ -50,29 +50,25 @@ impl TsAstSlicer {
         for stmt in &ret.program.body {
             match stmt {
                 Statement::ExportNamedDeclaration(export_decl) => {
-                    if let Some(decl) = &export_decl.declaration
-                        && let Some(sym) = Self::extract_declaration(
+                    if let Some(decl) = &export_decl.declaration {
+                        symbols.extend(Self::extract_declarations(
                             decl,
                             export_decl.span,
                             true,
                             source_text,
                             &line_starts,
-                        )
-                    {
-                        symbols.push(sym);
+                        ));
                     }
                 }
                 _ => {
-                    if let Some(decl) = stmt.as_declaration()
-                        && let Some(sym) = Self::extract_declaration(
+                    if let Some(decl) = stmt.as_declaration() {
+                        symbols.extend(Self::extract_declarations(
                             decl,
                             stmt.span(),
                             false,
                             source_text,
                             &line_starts,
-                        )
-                    {
-                        symbols.push(sym);
+                        ));
                     }
                 }
             }
@@ -237,13 +233,13 @@ impl TsAstSlicer {
         Ok(imports)
     }
 
-    fn extract_declaration(
+    fn extract_declarations(
         decl: &Declaration,
         outer_span: Span,
         is_exported: bool,
         source_text: &str,
         line_starts: &[usize],
-    ) -> Option<ExtractedTsSymbol> {
+    ) -> Vec<ExtractedTsSymbol> {
         let start = outer_span.start as usize;
         let end = outer_span.end as usize;
         let slice = &source_text[start..end.min(source_text.len())];
@@ -252,15 +248,10 @@ impl TsAstSlicer {
             Self::byte_to_line(line_starts, end),
         );
 
-        let mutates_state = slice.contains(".save(")
-            || slice.contains(".insert(")
-            || slice.contains(".update(")
-            || slice.contains(".delete(")
-            || slice.contains("prisma.")
-            || slice.contains(" dispatch(");
+        let mutates_state = Self::slice_mutates_state(slice);
 
         match decl {
-            Declaration::TSInterfaceDeclaration(iface) => Some(ExtractedTsSymbol {
+            Declaration::TSInterfaceDeclaration(iface) => vec![ExtractedTsSymbol {
                 name: iface.id.name.to_string(),
                 byte_range: (start, end),
                 line_range,
@@ -268,8 +259,8 @@ impl TsAstSlicer {
                 is_contract: true,
                 mutates_state: false,
                 signature_hash: blake3::hash(slice.as_bytes()).to_hex().to_string(),
-            }),
-            Declaration::TSTypeAliasDeclaration(alias) => Some(ExtractedTsSymbol {
+            }],
+            Declaration::TSTypeAliasDeclaration(alias) => vec![ExtractedTsSymbol {
                 name: alias.id.name.to_string(),
                 byte_range: (start, end),
                 line_range,
@@ -277,33 +268,71 @@ impl TsAstSlicer {
                 is_contract: true,
                 mutates_state: false,
                 signature_hash: blake3::hash(slice.as_bytes()).to_hex().to_string(),
-            }),
+            }],
             Declaration::FunctionDeclaration(func) => {
-                let name = func.id.as_ref()?.name.to_string();
-                Some(ExtractedTsSymbol {
-                    name,
+                let Some(id) = func.id.as_ref() else {
+                    return Vec::new();
+                };
+                vec![ExtractedTsSymbol {
+                    name: id.name.to_string(),
                     byte_range: (start, end),
                     line_range,
                     is_exported,
                     is_contract: false,
                     mutates_state,
                     signature_hash: blake3::hash(slice.as_bytes()).to_hex().to_string(),
-                })
+                }]
             }
             Declaration::ClassDeclaration(cls) => {
-                let name = cls.id.as_ref()?.name.to_string();
-                Some(ExtractedTsSymbol {
-                    name,
+                let Some(id) = cls.id.as_ref() else {
+                    return Vec::new();
+                };
+                let class_name = id.name.to_string();
+                let mut out = vec![ExtractedTsSymbol {
+                    name: class_name.clone(),
                     byte_range: (start, end),
                     line_range,
                     is_exported,
                     is_contract: false,
                     mutates_state,
                     signature_hash: blake3::hash(slice.as_bytes()).to_hex().to_string(),
-                })
+                }];
+
+                for elem in &cls.body.body {
+                    if let oxc_ast::ast::ClassElement::MethodDefinition(method) = elem
+                        && let Some(method_name) = method.key.static_name()
+                    {
+                        let m_start = method.span.start as usize;
+                        let m_end = method.span.end as usize;
+                        let m_slice = &source_text[m_start..m_end.min(source_text.len())];
+                        let m_line_range = (
+                            Self::byte_to_line(line_starts, m_start),
+                            Self::byte_to_line(line_starts, m_end),
+                        );
+                        out.push(ExtractedTsSymbol {
+                            name: format!("{}.{}", class_name, method_name),
+                            byte_range: (m_start, m_end),
+                            line_range: m_line_range,
+                            is_exported,
+                            is_contract: false,
+                            mutates_state: Self::slice_mutates_state(m_slice),
+                            signature_hash: blake3::hash(m_slice.as_bytes()).to_hex().to_string(),
+                        });
+                    }
+                }
+                out
             }
-            _ => None,
+            _ => Vec::new(),
         }
+    }
+
+    fn slice_mutates_state(slice: &str) -> bool {
+        slice.contains(".save(")
+            || slice.contains(".insert(")
+            || slice.contains(".update(")
+            || slice.contains(".delete(")
+            || slice.contains("prisma.")
+            || slice.contains(" dispatch(")
     }
 
     fn compute_line_starts(source: &str) -> Vec<usize> {

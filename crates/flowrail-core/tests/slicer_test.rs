@@ -300,3 +300,35 @@ fn test_mutation_dag_diamond_topological_ordering() {
     );
     assert_eq!(plan.gates[2].node.symbol_id, ctrl.symbol_id);
 }
+
+#[test]
+fn test_slicer_suggests_trailing_dot_when_missing() {
+    let mut graph = flowrail_core::graph::CodebaseGraph::new();
+    graph.upsert_node(flowrail_core::graph::SemanticNode {
+        symbol_id: "SendLedger#accepted().".to_string(),
+        display_name: "accepted".to_string(),
+        file_path: "src/send-ledger.ts".to_string(),
+        byte_range: (0, 20),
+        line_range: (1, 5),
+        role: flowrail_core::graph::NodeRole::EntryGate,
+        signature_hash: "abc".to_string(),
+        mutates_domain_state: false,
+        is_exported: true,
+    });
+
+    let err = flowrail_core::slicer::CorridorSlicer::build_corridor(
+        &graph,
+        "SendLedger#accepted()",
+        flowrail_core::slicer::SliceIntent::ReadFlow,
+        None,
+        &flowrail_core::pruning::PruningConfig::default(),
+    )
+    .expect_err("missing trailing dot should fail with suggestion");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Did you mean 'SendLedger#accepted().'"),
+        "expected trailing-dot hint, got: {}",
+        msg
+    );
+}

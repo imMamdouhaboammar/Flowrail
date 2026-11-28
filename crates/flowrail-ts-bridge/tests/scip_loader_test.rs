@@ -108,3 +108,16 @@ export function calculateC(): number { return 30; }
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn test_scip_parameter_symbol_filter() {
+    assert!(ScipGraphBuilder::is_parameter_symbol(
+        "scip-typescript npm pkg 1.0.0 src/`send-ledger.ts`/SendLedger#accepted().(id)"
+    ));
+    assert!(!ScipGraphBuilder::is_parameter_symbol(
+        "scip-typescript npm pkg 1.0.0 src/`send-ledger.ts`/SendLedger#accepted()."
+    ));
+    assert!(!ScipGraphBuilder::is_parameter_symbol(
+        "src/send-ledger.ts#SendLedger.accepted"
+    ));
+}
