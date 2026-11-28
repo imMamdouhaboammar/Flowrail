@@ -52,7 +52,7 @@ Initialize all harnesses in one command:
 flowrail init --target all
 ```
 
-Or target a specific environment: `flowrail init --target claude`, `cursor`, `codex`, `opencode`, `windsurf`, `zed`, `vscode`, or `antigravity`. `flowrail init` automatically adds `.flowrail/` and `.corridor/` to `.gitignore` (or `.git/info/exclude`).
+Or target a specific environment: `flowrail init --target claude`, `cursor`, `codex`, `opencode`, `windsurf`, `zed`, `vscode`, or `antigravity`. When a `.gitignore` or Git repository is present, `flowrail init` automatically adds `.flowrail/` and `.corridor/` to `.gitignore` (or `.git/info/exclude`).
 
 ---
 
@@ -65,6 +65,8 @@ npm install -g @mamdouh-aboammar/flowrail
 # or
 bun add -g @mamdouh-aboammar/flowrail
 ```
+
+Requires Rust/Cargo (1.75+) on `PATH` when no `flowrail` binary is already installed; the `bin/flowrail` launcher falls back to `cargo run` automatically.
 
 ### Option B — One-line script
 
