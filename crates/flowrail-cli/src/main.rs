@@ -240,14 +240,7 @@ fn main() -> Result<()> {
             artifact,
         } => {
             let graph = load_graph(&workspace)?;
-            let slice_intent = if intent.eq_ignore_ascii_case("MUTATE_CONTRACT")
-                || intent.eq_ignore_ascii_case("mutate")
-                || intent.eq_ignore_ascii_case("mutatecontract")
-            {
-                SliceIntent::MutateContract
-            } else {
-                SliceIntent::ReadFlow
-            };
+            let slice_intent = parse_slice_intent(&intent)?;
             let mut pruning_config = PruningConfig::default();
             if let Some(md) = max_depth {
                 pruning_config.max_corridor_depth = md.clamp(1, 100);
@@ -348,14 +341,7 @@ fn main() -> Result<()> {
                 output,
             } => {
                 let graph = load_graph(&workspace)?;
-                let slice_intent = if intent.eq_ignore_ascii_case("MUTATE_CONTRACT")
-                    || intent.eq_ignore_ascii_case("mutate")
-                    || intent.eq_ignore_ascii_case("mutatecontract")
-                {
-                    SliceIntent::MutateContract
-                } else {
-                    SliceIntent::ReadFlow
-                };
+                let slice_intent = parse_slice_intent(&intent)?;
                 let mut pruning_config = PruningConfig::default();
                 if let Some(md) = max_depth {
                     pruning_config.max_corridor_depth = md.clamp(1, 100);
@@ -692,6 +678,8 @@ fn main() -> Result<()> {
                 }
             }
 
+            ensure_git_ignore_entries(&workspace);
+
             println!("\nFlowrail initialized successfully! MCP server configuration:");
             println!("{}", mcp_str);
         }
@@ -827,4 +815,108 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn parse_slice_intent(intent: &str) -> Result<SliceIntent> {
+    if intent.eq_ignore_ascii_case("READ_FLOW")
+        || intent.eq_ignore_ascii_case("read")
+        || intent.eq_ignore_ascii_case("readflow")
+    {
+        Ok(SliceIntent::ReadFlow)
+    } else if intent.eq_ignore_ascii_case("MUTATE_CONTRACT")
+        || intent.eq_ignore_ascii_case("mutate")
+        || intent.eq_ignore_ascii_case("mutatecontract")
+    {
+        Ok(SliceIntent::MutateContract)
+    } else {
+        anyhow::bail!(
+            "Invalid intent '{}'. Use READ_FLOW or MUTATE_CONTRACT.",
+            intent
+        );
+    }
+}
+
+fn resolve_git_exclude_path(workspace: &std::path::Path) -> Option<PathBuf> {
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--git-path", "info/exclude"])
+        .current_dir(workspace)
+        .output()
+        && output.status.success()
+    {
+        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !raw.is_empty() {
+            let p = PathBuf::from(raw);
+            return Some(if p.is_absolute() {
+                p
+            } else {
+                workspace.join(p)
+            });
+        }
+    }
+    if workspace.join(".git").is_dir() {
+        return Some(workspace.join(".git/info/exclude"));
+    }
+    None
+}
+
+fn ensure_git_ignore_entries(workspace: &std::path::Path) {
+    let entries = [".flowrail/", ".corridor/"];
+    let gitignore_path = workspace.join(".gitignore");
+
+    let target_path = if gitignore_path.exists() {
+        gitignore_path
+    } else if let Some(exclude_path) = resolve_git_exclude_path(workspace) {
+        if let Some(parent) = exclude_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        exclude_path
+    } else {
+        return;
+    };
+
+    let existing = match std::fs::read_to_string(&target_path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(err) => {
+            eprintln!(
+                "  [WARN] Skipping ignore update for {} ({})",
+                target_path.display(),
+                err
+            );
+            return;
+        }
+    };
+    let existing_lines: Vec<&str> = existing.lines().map(str::trim).collect();
+    let missing: Vec<&str> = entries
+        .iter()
+        .copied()
+        .filter(|entry| {
+            let bare = entry.trim_end_matches('/');
+            !existing_lines.iter().any(|l| *l == *entry || *l == bare)
+        })
+        .collect();
+
+    if missing.is_empty() {
+        return;
+    }
+
+    let mut updated = existing;
+    if !updated.is_empty() && !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    if !updated.contains("# Flowrail") {
+        updated.push_str("# Flowrail generated state\n");
+    }
+    for entry in &missing {
+        updated.push_str(entry);
+        updated.push('\n');
+    }
+
+    if std::fs::write(&target_path, updated).is_ok() {
+        println!(
+            "  [OK] Added {} to {}",
+            missing.join(", "),
+            target_path.display()
+        );
+    }
 }
