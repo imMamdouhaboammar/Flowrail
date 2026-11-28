@@ -28,6 +28,22 @@
   "bin": {
     "flowrail": "./bin/flowrail"
   },
+  "files": [
+    "bin/",
+    "install.sh",
+    "scripts/",
+    "skills/",
+    "agents/",
+    "commands/",
+    "rules/",
+    "plugin.json",
+    "marketplace.json",
+    ".claude-plugin/",
+    ".codex-plugin/",
+    ".opencode/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "cargo build --release",
     "test": "cargo test",
